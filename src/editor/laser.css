@@ -1,0 +1,607 @@
+/* ---------- 激光笔 / 页面批注 ---------- */
+.laser-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 65;
+  overflow: hidden;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.laser-canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  touch-action: none;
+}
+
+/* ---------- 工具条 ---------- */
+.laser-toolbar {
+  position: absolute;
+  bottom: calc(var(--statusbar-h) + 14px);
+  left: 50%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  max-width: calc(100vw - 32px);
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--paper) 92%, transparent);
+  box-shadow: var(--shadow);
+  transform: translateX(-50%);
+  backdrop-filter: blur(10px);
+}
+
+.laser-group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+/* 仅窄屏用于强制换行的空占位，宽屏不占空间 */
+.laser-break {
+  display: none;
+}
+
+.laser-divider {
+  width: 1px;
+  height: 18px;
+  background: var(--border);
+}
+
+.laser-tool,
+.laser-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition:
+    background 0.14s ease,
+    color 0.14s ease;
+}
+
+.laser-tool:hover,
+.laser-action:hover {
+  background: var(--surface-muted-strong);
+  color: var(--text);
+}
+
+.laser-tool[data-active='true'] {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
+.laser-action[data-variant='danger']:hover {
+  background: rgba(229, 17, 63, 0.12);
+  color: #e5113f;
+}
+
+/* ---------- 调色盘 ---------- */
+.laser-color {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.laser-color-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 28px;
+  padding: 0 4px 0 3px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: background 0.14s ease;
+}
+
+.laser-color-trigger:hover,
+.laser-color-trigger[aria-expanded='true'] {
+  background: var(--surface-muted-strong);
+}
+
+.laser-color-chip {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px rgba(15, 18, 28, 0.16);
+}
+
+.laser-palette {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 50%;
+  width: 268px;
+  max-width: calc(100vw - 24px);
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--paper) 96%, transparent);
+  box-shadow: var(--shadow);
+  transform: translateX(-50%);
+  backdrop-filter: blur(12px);
+}
+
+.laser-palette-block + .laser-palette-block {
+  margin-top: 8px;
+}
+
+.laser-palette-label {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--text-tertiary);
+  font-size: 10.5px;
+}
+
+.laser-palette-grid {
+  display: grid;
+  grid-template-columns: repeat(13, 1fr);
+  gap: 3px;
+}
+
+.laser-palette-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+
+.laser-color-cell {
+  width: 100%;
+  aspect-ratio: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  cursor: pointer;
+  box-shadow: inset 0 0 0 1px rgba(15, 18, 28, 0.08);
+  transition: transform 0.12s ease;
+}
+
+.laser-color-cell:hover {
+  transform: scale(1.16);
+}
+
+.laser-color-cell[data-active='true'] {
+  outline: 2px solid var(--text);
+  outline-offset: 1px;
+}
+
+.laser-palette-row .laser-color-cell {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+}
+
+.laser-palette-custom {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 9px;
+  padding-top: 9px;
+  border-top: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+.laser-palette-custom input[type='color'] {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  cursor: pointer;
+}
+
+.laser-palette-custom input[type='color']::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.laser-palette-custom input[type='color']::-webkit-color-swatch {
+  border: 1px solid var(--border);
+  border-radius: 50%;
+}
+
+.laser-palette-value {
+  margin-left: auto;
+  color: var(--text-tertiary);
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+}
+
+.laser-width {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+  transition: background 0.14s ease;
+}
+
+.laser-width:hover {
+  background: var(--surface-muted-strong);
+}
+
+.laser-width[data-active='true'] {
+  background: var(--accent-soft);
+}
+
+.laser-width span {
+  display: block;
+  border-radius: 50%;
+}
+
+.laser-mode {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+}
+
+.laser-mode button {
+  padding: 3px 9px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-tertiary);
+  font-family: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+  transition:
+    background 0.14s ease,
+    color 0.14s ease;
+}
+
+.laser-mode button[data-active='true'] {
+  background: var(--paper);
+  color: var(--text);
+  box-shadow: 0 1px 2px rgba(15, 18, 28, 0.12);
+}
+
+.laser-action[data-active='true'] {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
+/* ---------- 快捷键设置面板 ---------- */
+.laser-panel {
+  position: absolute;
+  right: 16px;
+  bottom: calc(var(--statusbar-h) + 66px);
+  display: flex;
+  flex-direction: column;
+  width: 264px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--paper) 96%, transparent);
+  box-shadow: var(--shadow);
+  color: var(--text);
+  font-size: 12px;
+  backdrop-filter: blur(12px);
+}
+
+.laser-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 6px 6px 12px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.laser-panel-body {
+  max-height: min(52vh, 430px);
+  padding: 6px 8px 8px;
+  overflow-y: auto;
+}
+
+.laser-panel-group + .laser-panel-group {
+  margin-top: 8px;
+}
+
+.laser-panel-title {
+  display: block;
+  padding: 2px 6px 4px;
+  color: var(--text-tertiary);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+}
+
+.laser-panel-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 3px 6px;
+  border-radius: 8px;
+}
+
+.laser-panel-row[data-recording='true'] {
+  background: var(--accent-soft);
+}
+
+.laser-key {
+  min-width: 76px;
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 11.5px;
+  text-align: center;
+  cursor: pointer;
+  transition:
+    border-color 0.14s ease,
+    background 0.14s ease;
+}
+
+.laser-key:hover {
+  border-color: var(--text-tertiary);
+}
+
+.laser-key[data-recording='true'] {
+  border-color: var(--accent-strong);
+  background: var(--paper);
+  color: var(--accent-strong);
+}
+
+.laser-panel-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 10px 8px;
+  border-top: 1px solid var(--border);
+}
+
+.laser-panel-note {
+  color: var(--text-tertiary);
+  font-size: 10.5px;
+  line-height: 1.4;
+}
+
+.laser-panel-note[data-variant='error'] {
+  display: block;
+  padding: 6px 6px 0;
+  color: #e5113f;
+}
+
+.laser-panel-reset {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 9px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.laser-panel-reset:hover {
+  background: var(--surface-muted-strong);
+  color: var(--text);
+}
+
+/* ---------- 文字标注输入 ---------- */
+.laser-text-input {
+  position: absolute;
+  z-index: 2;
+  min-width: 96px;
+  max-width: calc(100vw - 20px);
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  outline: 1px dashed color-mix(in srgb, var(--text) 34%, transparent);
+  outline-offset: 5px;
+  overflow: hidden;
+  font-weight: 600;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  resize: none;
+  caret-color: currentColor;
+}
+
+.laser-text-input::placeholder {
+  color: color-mix(in srgb, var(--text) 38%, transparent);
+  font-weight: 500;
+}
+
+/* ---------- 截图进行中：隐藏所有界面元素，只保留批注画布 ---------- */
+.laser-layer[data-capturing='true'] {
+  cursor: default;
+}
+
+.laser-layer[data-capturing='true'] .laser-canvas {
+  pointer-events: none;
+}
+
+.laser-layer[data-capturing='true'] .laser-toolbar,
+.laser-layer[data-capturing='true'] .laser-hint,
+.laser-layer[data-capturing='true'] .laser-toast,
+.laser-layer[data-capturing='true'] .laser-panel,
+.laser-layer[data-capturing='true'] .laser-text-input {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* ---------- 轻提示 ---------- */
+.laser-toast {
+  position: absolute;
+  bottom: calc(var(--statusbar-h) + 62px);
+  left: 50%;
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--paper) 92%, transparent);
+  box-shadow: var(--shadow);
+  color: var(--text-secondary);
+  font-size: 12px;
+  white-space: nowrap;
+  transform: translateX(-50%);
+  backdrop-filter: blur(10px);
+}
+
+.laser-toast[data-variant='error'] {
+  border-color: rgba(229, 17, 63, 0.36);
+  color: #e5113f;
+}
+
+/* ---------- 顶部提示 ---------- */
+.laser-hint {
+  position: absolute;
+  top: calc(var(--titlebar-h) + 18px);
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--paper) 84%, transparent);
+  box-shadow: var(--shadow);
+  color: var(--text-secondary);
+  font-size: 12px;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  pointer-events: none;
+  transform: translateX(-50%);
+  backdrop-filter: blur(10px);
+  animation: laser-hint 5s ease forwards;
+}
+
+.laser-hint-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ff2d55;
+}
+
+@keyframes laser-hint {
+  0%,
+  80% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@media (max-width: 720px) {
+  .laser-hint {
+    max-width: calc(100vw - 32px);
+    white-space: normal;
+    line-height: 1.5;
+  }
+
+  /* 触屏：工具条贴边撑满、两行布局，按钮放大到 34px 便于点按 */
+  .laser-toolbar {
+    right: 10px;
+    bottom: calc(var(--statusbar-h) + 10px);
+    left: 10px;
+    gap: 6px 4px;
+    max-width: none;
+    padding: 8px;
+    border-radius: 18px;
+    transform: none;
+  }
+
+  .laser-divider {
+    display: none;
+  }
+
+  .laser-break {
+    display: block;
+    flex-basis: 100%;
+    height: 0;
+  }
+
+  .laser-group,
+  .laser-color {
+    flex: none;
+  }
+
+  .laser-tool,
+  .laser-action {
+    width: 32px;
+    height: 33px;
+    border-radius: 10px;
+  }
+
+  .laser-color-trigger {
+    height: 33px;
+  }
+
+  .laser-color-chip {
+    width: 20px;
+    height: 20px;
+  }
+
+  .laser-width {
+    width: 24px;
+    height: 33px;
+  }
+
+  .laser-mode {
+    padding: 3px;
+  }
+
+  .laser-mode button {
+    padding: 5px 12px;
+    font-size: 12px;
+  }
+
+  /* 两行工具条更高，轻提示与快捷键面板整体上移，避免叠压 */
+  .laser-toast {
+    bottom: calc(var(--statusbar-h) + 108px);
+  }
+
+  .laser-panel {
+    right: 10px;
+    bottom: calc(var(--statusbar-h) + 108px);
+    left: 10px;
+    width: auto;
+  }
+}
+
+@media (max-width: 400px) {
+  .laser-tool,
+  .laser-action {
+    width: 30px;
+    height: 32px;
+  }
+
+  .laser-width {
+    width: 22px;
+    height: 32px;
+  }
+
+  .laser-mode button {
+    padding: 5px 9px;
+  }
+}
