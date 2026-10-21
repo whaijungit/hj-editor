@@ -373,11 +373,8 @@ export function LaserPointer({
       const halfLeading = (lineHeight - fontSize) / 2
 
       ctx!.save()
+      // 文字保持干净，不加发光投影，避免笔画糊成一团
       ctx!.fillStyle = withAlpha(mark.color, STROKE_ALPHA)
-      ctx!.shadowColor = withAlpha(mark.color, GLOW_ALPHA)
-      ctx!.shadowBlur = GLOW_BLUR + 2
-      ctx!.shadowOffsetX = 0
-      ctx!.shadowOffsetY = 0
       ctx!.font = `600 ${fontSize}px ${TEXT_FONT_FAMILY}`
       ctx!.textBaseline = 'top'
 

@@ -13,9 +13,12 @@ const LEVEL_LENGTH: Record<number, number> = { 1: 30, 2: 22, 3: 15, 4: 10 }
 export function OutlineRail({
   editor,
   onNavigate,
+  hidden = false,
 }: {
   editor: Editor
   onNavigate: (pos: number) => void
+  /** 打字演示期间先不剧透全文结构 */
+  hidden?: boolean
 }) {
   const [activeIndex, setActiveIndex] = useState(0)
   const [menuOpen, setMenuOpen] = useState(false)
@@ -163,7 +166,7 @@ export function OutlineRail({
     }
   }, [closeMenu])
 
-  if (headingCount === 0) return null
+  if (hidden || headingCount === 0) return null
 
   return (
     <div

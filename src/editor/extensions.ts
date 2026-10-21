@@ -15,6 +15,7 @@ import { StarterKit } from '@tiptap/starter-kit'
 import { DEFAULT_CODE_LANGUAGE, lowlight } from './codeLanguages'
 import { BlockMath, InlineMath } from './math'
 import { MermaidDiagram } from './mermaid'
+import { TypingPop, TypingReveal } from './typingReveal'
 
 export const editorExtensions = [
   StarterKit.configure({
@@ -53,4 +54,8 @@ export const editorExtensions = [
   BlockMath,
   // ```mermaid 代码块下方渲染成图表
   MermaidDiagram,
+  // 首屏把示例文稿逐字敲出来
+  TypingReveal,
+  // 自己敲字时也来一点「点赞」反馈
+  TypingPop,
 ]

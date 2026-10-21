@@ -6,12 +6,15 @@ export function StatusBar({
   typewriterMode,
   laserActive,
   sourceOpen,
+  typing,
 }: {
   editor: Editor
   focusMode: boolean
   typewriterMode: boolean
   laserActive: boolean
   sourceOpen: boolean
+  /** 打字演示期间还没敲完，先别把全文字数亮出来 */
+  typing?: boolean
 }) {
   const stats = useEditorState({
     editor,
@@ -30,19 +33,25 @@ export function StatusBar({
   return (
     <footer className="statusbar">
       <div className="statusbar-group">
-        <span>
-          <strong>{stats.words}</strong> 字
-        </span>
-        <span className="statusbar-dot" />
-        <span>
-          <strong>{stats.characters}</strong> 字符
-        </span>
-        <span className="statusbar-dot" />
-        <span>
-          <strong>{stats.paragraphs}</strong> 段落
-        </span>
-        <span className="statusbar-dot" />
-        <span>约 {stats.minutes} 分钟读完</span>
+        {typing ? (
+          <span>正在逐字打出示例文稿…</span>
+        ) : (
+          <>
+            <span>
+              <strong>{stats.words}</strong> 字
+            </span>
+            <span className="statusbar-dot" />
+            <span>
+              <strong>{stats.characters}</strong> 字符
+            </span>
+            <span className="statusbar-dot" />
+            <span>
+              <strong>{stats.paragraphs}</strong> 段落
+            </span>
+            <span className="statusbar-dot" />
+            <span>约 {stats.minutes} 分钟读完</span>
+          </>
+        )}
       </div>
 
       <div className="statusbar-group">

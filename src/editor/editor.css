@@ -896,6 +896,126 @@
   background: rgba(255, 255, 255, 0.16);
 }
 
+/* ---------- 表格快捷工具条 ---------- */
+.table-tools {
+  position: fixed;
+  z-index: 62;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  background: #1b1d2b;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 9px;
+  box-shadow: 0 10px 24px -12px rgba(15, 18, 35, 0.45);
+  user-select: none;
+}
+
+.table-tools__main,
+.table-tools__more {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #d5d9ee;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+
+.table-tools__more {
+  padding: 0 5px;
+}
+
+.table-tools__main:hover,
+.table-tools__more:hover,
+.table-tools__more[data-open='true'] {
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+}
+
+.table-tools__panel {
+  position: fixed;
+  z-index: 63;
+  width: 208px;
+  max-height: calc(100vh - 24px);
+  overflow-y: auto;
+  padding: 6px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 18px 40px -18px rgba(15, 18, 35, 0.4);
+  font-size: 13px;
+  scrollbar-width: thin;
+}
+
+.tt-group {
+  padding: 7px 8px 3px;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+.tt-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1px;
+}
+
+.tt-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.35;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+
+.tt-item:hover:not(:disabled) {
+  background: var(--surface-muted-strong);
+  color: var(--text);
+}
+
+.tt-item:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.tt-item__icon {
+  display: inline-flex;
+  color: var(--text-tertiary);
+}
+
+.tt-item:hover:not(:disabled) .tt-item__icon {
+  color: var(--accent);
+}
+
+.tt-divider {
+  height: 1px;
+  margin: 5px 4px;
+  background: var(--border);
+}
+
 /* ---------- 输出面板 ---------- */
 .output-card {
   position: sticky;
@@ -1016,4 +1136,159 @@
   color: var(--text-secondary);
   font-family: var(--font-mono);
   font-size: 11px;
+}
+
+/* ---------- 打字：激光笔式光效 ---------- */
+:root {
+  --typing-laser: #ff2d55;
+}
+
+.typing-laser-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 70;
+  pointer-events: none;
+}
+
+.typing-laser {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+/* 落点的激光核心 */
+.typing-laser::before {
+  content: '';
+  position: absolute;
+  top: -6px;
+  left: -6px;
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: radial-gradient(
+    circle,
+    #fff 0%,
+    var(--typing-laser) 38%,
+    transparent 72%
+  );
+  animation: typing-laser-core 0.32s ease-out forwards;
+}
+
+/* 落点的冲击光环 */
+.typing-laser::after {
+  content: '';
+  position: absolute;
+  top: -4px;
+  left: -4px;
+  width: 8px;
+  height: 8px;
+  border: 1px solid var(--typing-laser);
+  border-radius: 999px;
+  animation: typing-laser-ring 0.38s ease-out forwards;
+}
+
+/* 射出的光刃：白芯到激光色的渐变，带一圈柔和辉光 */
+.typing-laser i {
+  position: absolute;
+  top: -1px;
+  left: 0;
+  width: var(--len, 12px);
+  height: 2px;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    #fff,
+    var(--typing-laser) 42%,
+    transparent
+  );
+  box-shadow: 0 0 6px color-mix(in srgb, var(--typing-laser) 70%, transparent);
+  transform-origin: 0 50%;
+  opacity: 0;
+  animation: typing-laser-beam 0.46s cubic-bezier(0.16, 0.84, 0.34, 1)
+    var(--delay, 0ms) forwards;
+}
+
+@keyframes typing-laser-beam {
+  0% {
+    opacity: 0;
+    transform: rotate(var(--rot, 0deg)) translateX(2px) scaleX(0.35);
+  }
+
+  15% {
+    opacity: 1;
+  }
+
+  62% {
+    opacity: 0.9;
+  }
+
+  100% {
+    opacity: 0;
+    transform: rotate(var(--rot, 0deg)) translateX(var(--dist, 22px))
+      scaleX(0.85);
+  }
+}
+
+@keyframes typing-laser-core {
+  0% {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+
+  28% {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: scale(2.1);
+  }
+}
+
+@keyframes typing-laser-ring {
+  0% {
+    opacity: 0.55;
+    transform: scale(0.5);
+  }
+
+  100% {
+    opacity: 0;
+    transform: scale(2.4);
+  }
+}
+
+/* ---------- 打字演示提示 ---------- */
+.typing-hint {
+  position: fixed;
+  bottom: calc(var(--statusbar-h) + 18px);
+  left: 50%;
+  z-index: 80;
+  padding: 7px 15px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--paper) 92%, transparent);
+  box-shadow: var(--shadow);
+  color: var(--text-secondary);
+  font-size: 12px;
+  transform: translateX(-50%);
+  pointer-events: none;
+  backdrop-filter: blur(8px);
+  animation: typing-hint-in 0.3s ease-out;
+}
+
+@keyframes typing-hint-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
 }

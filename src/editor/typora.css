@@ -385,6 +385,71 @@
   pointer-events: none;
 }
 
+/* 打字演示：还没敲到的内容先藏起来，行宽会随输入实时重排 */
+.writer-page .tiptap-content .typing-hidden,
+.writer-page .tiptap-content .typing-hidden-block {
+  display: none;
+}
+
+/* 刚落下的字像被激光扫过：先亮起白芯与红光，再收回正文颜色 */
+.writer-page .tiptap-content .typing-glow {
+  animation: typing-glow 0.3s ease-out;
+}
+
+@keyframes typing-glow {
+  0% {
+    opacity: 0.6;
+    text-shadow:
+      0 0 2px #fff,
+      0 0 9px var(--typing-laser, #ff2d55);
+  }
+
+  45% {
+    opacity: 1;
+    text-shadow:
+      0 0 1px #fff,
+      0 0 6px var(--typing-laser, #ff2d55);
+  }
+
+  100% {
+    text-shadow:
+      0 0 1px transparent,
+      0 0 6px transparent;
+  }
+}
+
+.writer-page .tiptap-content .typing-caret {
+  display: inline-block;
+  width: 2px;
+  height: 1.05em;
+  margin: 0 -1px;
+  border-radius: 1px;
+  background: var(--typing-laser, #ff2d55);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--typing-laser, #ff2d55) 70%, transparent);
+  vertical-align: -0.18em;
+  pointer-events: none;
+  animation: typing-caret-blink 1s steps(1, end) infinite;
+}
+
+@keyframes typing-caret-blink {
+  0%,
+  49% {
+    opacity: 1;
+  }
+
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .writer-page .tiptap-content .typing-caret,
+  .writer-page .tiptap-content .typing-glow {
+    animation: none;
+  }
+}
+
 /* 专注模式 */
 .writer-page[data-focus-mode='true'] .tiptap-content > * {
   opacity: 0.28;

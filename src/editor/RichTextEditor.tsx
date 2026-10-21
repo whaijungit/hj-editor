@@ -15,6 +15,7 @@ import {
 import { BubbleMenu } from '@tiptap/react/menus'
 import { BubbleToolbar } from './Toolbar'
 import { CodeBlockLanguage } from './CodeBlockLanguage'
+import { TableToolbar } from './TableToolbar'
 import { editorExtensions } from './extensions'
 import { initialContent } from './initialContent'
 import {
@@ -39,6 +40,14 @@ import { useCustomFonts } from './customFonts'
 import { useBodyFontLoad } from './useBodyFontLoad'
 import { LaserPointer } from './LaserPointer'
 import { setMermaidTheme } from './mermaid'
+import {
+  clearLaserFlashes,
+  spawnLaserFlash,
+  startTypingReveal,
+  stepTypingReveal,
+  stopTypingReveal,
+  typingCaretPos,
+} from './typingReveal'
 import {
   buildStandaloneHtml,
   downloadText,
@@ -65,6 +74,18 @@ import {
 import './editor.css'
 import './typora.css'
 
+/** 示例文稿的纯文本指纹：只有内容还是这篇示例时才播打字演示 */
+const EXAMPLE_TEXT = (() => {
+  const template = document.createElement('template')
+  template.innerHTML = initialContent
+  return (template.content.textContent ?? '').replace(/\s+/g, '')
+})()
+
+const TYPEWRITER_CHARS_PER_MS = 0.11
+const TYPEWRITER_START_DELAY = 420
+/** 激光光束的最小间隔：控制出现密度，避免每个字都在闪光 */
+const TYPEWRITER_FLASH_INTERVAL = 90
+
 export function RichTextEditor() {
   const [draft] = useState(loadDraft)
   const [title, setTitle] = useState(draft?.title ?? '未命名文稿')
@@ -76,6 +97,7 @@ export function RichTextEditor() {
   const [docWidth, setDocWidth] = useState(loadDocWidth)
   const [focusMode, setFocusMode] = useState(false)
   const [typewriterMode, setTypewriterMode] = useState(false)
+  const [typingDemo, setTypingDemo] = useState(false)
   const [laserActive, setLaserActive] = useState(false)
   const [titleBarHidden, setTitleBarHidden] = useState(
     () => !loadChromeVisibility().titleBar,
@@ -451,6 +473,114 @@ export function RichTextEditor() {
     }
   }, [editor, typewriterMode])
 
+  // 打开页面时把示例文稿逐字敲出来；任意点击 / 按键立即结束
+  useEffect(() => {
+    if (!editor) return
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+
+    const isExample =
+      !draft || editor.getText().replace(/\s+/g, '') === EXAMPLE_TEXT
+    if (!isExample) return
+
+    const total = startTypingReveal(editor)
+    if (!total) return
+
+    editor.setEditable(false)
+    setTypingDemo(true)
+
+    let frame = 0
+    let startTimer = 0
+    let stopped = false
+    let revealed = 0
+    let pending = 0
+    let last = 0
+    let lastFlash = 0
+
+    const finish = () => {
+      if (stopped) return
+      stopped = true
+      if (frame) window.cancelAnimationFrame(frame)
+      window.clearTimeout(startTimer)
+      window.removeEventListener('pointerdown', onSkip, true)
+      window.removeEventListener('keydown', onSkip, true)
+      clearLaserFlashes()
+      if (!editor.isDestroyed) {
+        stopTypingReveal(editor)
+        editor.setEditable(true)
+      }
+      setTypingDemo(false)
+    }
+
+    const onSkip = (event: Event) => {
+      // 组合快捷键照常生效，只有单纯的点击 / 敲键才结束演示
+      if (
+        event instanceof KeyboardEvent &&
+        (event.metaKey || event.ctrlKey || event.altKey)
+      ) {
+        return
+      }
+      finish()
+    }
+
+    /** 光标当前在视口里的位置，一次测量同时喂给自动滚动和粒子 */
+    const caretCoords = () => {
+      const caret = typingCaretPos(editor.state.doc, revealed)
+      if (caret === null) return null
+      try {
+        return editor.view.coordsAtPos(caret)
+      } catch {
+        // 位置刚好落在文档末尾时可能取不到坐标，忽略即可
+        return null
+      }
+    }
+
+    const tick = (now: number) => {
+      if (stopped) return
+      pending += Math.min(now - last, 120) * TYPEWRITER_CHARS_PER_MS
+      last = now
+
+      const step = Math.floor(pending)
+      if (step > 0) {
+        pending -= step
+        revealed = Math.min(total, revealed + step)
+        stepTypingReveal(editor, revealed)
+
+        const coords = caretCoords()
+        if (coords) {
+          if (now - lastFlash > TYPEWRITER_FLASH_INTERVAL) {
+            lastFlash = now
+            spawnLaserFlash(
+              coords.left + window.scrollX,
+              (coords.top + coords.bottom) / 2 + window.scrollY,
+            )
+          }
+
+          const limit = window.innerHeight * 0.76
+          if (coords.bottom > limit) {
+            window.scrollBy(0, Math.min(coords.bottom - limit, 140))
+          }
+        }
+
+        if (revealed >= total) {
+          finish()
+          return
+        }
+      }
+
+      frame = window.requestAnimationFrame(tick)
+    }
+
+    window.addEventListener('pointerdown', onSkip, true)
+    window.addEventListener('keydown', onSkip, true)
+    // 先让空白纸露一下面，再开始敲字
+    startTimer = window.setTimeout(() => {
+      last = performance.now()
+      frame = window.requestAnimationFrame(tick)
+    }, TYPEWRITER_START_DELAY)
+
+    return finish
+  }, [editor, draft])
+
   const navigateTo = useCallback((pos: number) => {
     const editor = editorRef.current
     if (!editor) return
@@ -577,12 +707,13 @@ export function RichTextEditor() {
           >
             <EditorContent editor={editor} />
             <CodeBlockLanguage editor={editor} />
+            <TableToolbar editor={editor} hidden={laserActive} />
             <DocResizer onResize={setDocWidth} onCommit={saveDocWidth} />
           </div>
         </main>
       </div>
 
-      <OutlineRail editor={editor} onNavigate={navigateTo} />
+      <OutlineRail editor={editor} onNavigate={navigateTo} hidden={typingDemo} />
 
       {!statusBarHidden && (
         <StatusBar
@@ -591,6 +722,7 @@ export function RichTextEditor() {
           typewriterMode={typewriterMode}
           laserActive={laserActive}
           sourceOpen={sourceOpen}
+          typing={typingDemo}
         />
       )}
 
@@ -655,6 +787,12 @@ export function RichTextEditor() {
         onRetryFont={retryFont}
         onClose={() => setThemeOpen(false)}
       />
+
+      {typingDemo && (
+        <div className="typing-hint" role="status">
+          打字演示中 · 点击任意处跳过
+        </div>
+      )}
 
       {toast && (
         <div className="toast" role="status">
