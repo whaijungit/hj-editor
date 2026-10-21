@@ -174,26 +174,7 @@ async function inlineEcharts(html: string, theme: 'light' | 'dark'): Promise<str
   return root.innerHTML
 }
 
-export function downloadText(
-  filename: string,
-  text: string,
-  mime = 'text/plain;charset=utf-8',
-) {
-  const blob = new Blob([text], { type: mime })
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = filename
-  document.body.appendChild(link)
-  link.click()
-  link.remove()
-  window.setTimeout(() => URL.revokeObjectURL(url), 1000)
-}
-
-export function safeFileName(name: string): string {
-  const cleaned = name.replace(/[\\/:*?"<>|]/g, '-').trim()
-  return cleaned || '未命名文稿'
-}
+export { downloadText, safeFileName } from './files'
 
 const EXPORT_STYLES = `
   :root { color-scheme: light; }

@@ -62,12 +62,8 @@ import {
   stopTypingReveal,
   typingCaretPos,
 } from './typingReveal'
-import {
-  buildStandaloneHtml,
-  downloadText,
-  htmlToMarkdown,
-  safeFileName,
-} from './markdown'
+import { downloadText, safeFileName } from './files'
+import { loadMarkdown } from './markdownLoader'
 import {
   applyTheme,
   DEFAULT_THEME_CONFIG,
@@ -582,11 +578,18 @@ export function RichTextEditor() {
 
   useEffect(() => {
     if (!editor || !sourceOpen) return
-    const update = () => setSourceMarkdown(htmlToMarkdown(editor.getHTML()))
-    update()
-    editor.on('update', update)
+    let cancelled = false
+    let detach: (() => void) | null = null
+    void loadMarkdown().then(({ htmlToMarkdown }) => {
+      if (cancelled) return
+      const update = () => setSourceMarkdown(htmlToMarkdown(editor.getHTML()))
+      update()
+      editor.on('update', update)
+      detach = () => editor.off('update', update)
+    })
     return () => {
-      editor.off('update', update)
+      cancelled = true
+      detach?.()
     }
   }, [editor, sourceOpen])
 
@@ -784,9 +787,10 @@ export function RichTextEditor() {
     }
   }, [])
 
-  const exportMarkdown = useCallback(() => {
+  const exportMarkdown = useCallback(async () => {
     const editor = editorRef.current
     if (!editor) return
+    const { htmlToMarkdown } = await loadMarkdown()
     downloadText(
       `${safeFileName(titleRef.current)}.md`,
       htmlToMarkdown(editor.getHTML()),
@@ -798,6 +802,7 @@ export function RichTextEditor() {
   const exportHtml = useCallback(async () => {
     const editor = editorRef.current
     if (!editor) return
+    const { buildStandaloneHtml } = await loadMarkdown()
     const html = await buildStandaloneHtml(
       titleRef.current,
       editor.getHTML(),
@@ -815,6 +820,7 @@ export function RichTextEditor() {
     const editor = editorRef.current
     if (!editor) return
     try {
+      const { htmlToMarkdown } = await loadMarkdown()
       await navigator.clipboard.writeText(htmlToMarkdown(editor.getHTML()))
       notify('Markdown 已复制到剪贴板')
     } catch {

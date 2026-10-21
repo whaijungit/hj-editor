@@ -6,9 +6,6 @@ import {
   type NodeViewRenderer,
 } from '@tiptap/core'
 import { TextSelection, type EditorState } from '@tiptap/pm/state'
-import katex from 'katex'
-import 'katex/dist/katex.min.css'
-
 const EMPTY_HINT = '点击或双击输入公式'
 
 const KATEX_OPTIONS = {
@@ -17,7 +14,38 @@ const KATEX_OPTIONS = {
   trust: false,
 }
 
-function renderLatex(latex: string, displayMode: boolean): string {
+type Katex = typeof import('katex').default
+
+let katex: Katex | null = null
+let katexLoading: Promise<Katex> | null = null
+const katexListeners = new Set<() => void>()
+
+/**
+ * KaTeX（JS + CSS + 字体）接近 150KB gzip，只有文档里真的出现公式时才值得下载。
+ * 首屏不含公式就完全不加载；出现公式时先显示 LaTeX 原文，加载完再重绘。
+ */
+export function ensureKatex(): Promise<Katex> {
+  if (katex) return Promise.resolve(katex)
+  katexLoading ??= Promise.all([
+    import('katex'),
+    import('katex/dist/katex.min.css'),
+  ]).then(([module]) => {
+    katex = (module.default ?? module) as Katex
+    const listeners = [...katexListeners]
+    katexListeners.clear()
+    listeners.forEach((listener) => listener())
+    return katex
+  })
+  return katexLoading
+}
+
+function onKatexReady(listener: () => void) {
+  if (katex) listener()
+  else katexListeners.add(listener)
+}
+
+function renderLatex(latex: string, displayMode: boolean): string | null {
+  if (!katex) return null
   return katex.renderToString(latex, { ...KATEX_OPTIONS, displayMode })
 }
 
@@ -57,7 +85,17 @@ function createMathNodeView(kind: 'inline' | 'block'): NodeViewRenderer {
         return
       }
       dom.classList.remove('is-empty')
-      dom.innerHTML = renderLatex(latex, kind === 'block')
+      const html = renderLatex(latex, kind === 'block')
+      if (html === null) {
+        // KaTeX 尚未就绪：先按原文显示，加载完成后自动重绘
+        dom.textContent = latex
+        void ensureKatex()
+        onKatexReady(() => {
+          if (dom.getAttribute('data-latex') === latex) paint(latex)
+        })
+        return
+      }
+      dom.innerHTML = html
     }
 
     paint(node.attrs.latex)
