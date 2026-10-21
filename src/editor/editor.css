@@ -590,15 +590,63 @@
   color: #d14343;
 }
 
-/* 代码块语言徽标 */
-.code-lang-badge {
+/* ```echarts 代码块下方渲染出的数据图表 */
+.echarts-figure {
+  position: relative;
+  margin: -0.3em 0 1.4em;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  user-select: none;
+}
+
+.echarts-mount {
+  width: 100%;
+  min-height: 160px;
+}
+
+.echarts-hint {
+  display: block;
+  padding: 6px 4px;
+  color: var(--text-tertiary);
+  font-size: 12.5px;
+  line-height: 1.7;
+}
+
+.echarts-figure[data-state='pending'] {
+  border-style: dashed;
+}
+
+.echarts-figure[data-state='error'] .echarts-hint {
+  color: #d14343;
+}
+
+/* 代码块右上角的操作区：复制 + 语言徽标 */
+.code-block-tools {
   position: fixed;
   z-index: 40;
   display: inline-flex;
   align-items: center;
+  gap: 4px;
+  transform: translateX(-100%);
+  opacity: 0.4;
+  transition: opacity 0.15s ease;
+}
+
+.code-block-tools:hover,
+.code-block-tools:focus-within,
+.code-block-tools[data-open='true'] {
+  opacity: 1;
+}
+
+.code-lang-badge,
+.code-block-copy,
+.code-block-fold {
+  display: inline-flex;
+  align-items: center;
   gap: 3px;
   height: 22px;
-  padding: 0 6px 0 8px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 6px;
   background: rgba(255, 255, 255, 0.08);
@@ -607,20 +655,84 @@
   font-size: 11px;
   font-weight: 500;
   line-height: 1;
+  white-space: nowrap;
   cursor: pointer;
-  opacity: 0.4;
-  transform: translateX(-100%);
   transition:
-    opacity 0.15s ease,
     background 0.15s ease,
     color 0.15s ease;
 }
 
+.code-lang-badge {
+  padding: 0 6px 0 8px;
+}
+
+.code-block-copy,
+.code-block-fold {
+  padding: 0 7px;
+}
+
 .code-lang-badge:hover,
-.code-lang-badge[aria-expanded='true'] {
+.code-lang-badge[aria-expanded='true'],
+.code-block-copy:hover,
+.code-block-fold:hover {
   background: rgba(255, 255, 255, 0.16);
   color: #f2f5ff;
-  opacity: 1;
+}
+
+.code-block-copy[data-state='done'] {
+  border-color: rgba(150, 226, 178, 0.35);
+  color: #9be2b4;
+}
+
+.code-block-copy[data-state='fail'] {
+  border-color: rgba(242, 163, 163, 0.35);
+  color: #f2a3a3;
+}
+
+/* 折叠后的代码块：只显示前 3 行，底部渐隐，长代码不再把正文挤走 */
+.tiptap-content pre.is-code-collapsed,
+.writer-page .tiptap-content pre.is-code-collapsed {
+  max-height: calc(3 * 1.7em + 36px);
+  overflow-y: hidden;
+  -webkit-mask-image: linear-gradient(180deg, #000 calc(100% - 30px), transparent);
+  mask-image: linear-gradient(180deg, #000 calc(100% - 30px), transparent);
+}
+
+/* 折叠块下方常驻的展开按钮（不依赖光标，滚到别处也能点开） */
+.code-collapse-toggle {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  margin: -6px 0 12px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-muted);
+  color: var(--text-tertiary);
+  font-family: inherit;
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.code-collapse-toggle::before {
+  content: '';
+  width: 0;
+  height: 0;
+  margin-right: 5px;
+  border-top: 4px solid currentColor;
+  border-right: 4px solid transparent;
+  border-left: 4px solid transparent;
+}
+
+.code-collapse-toggle:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-muted-strong);
+  color: var(--text-secondary);
 }
 
 .code-lang-panel {

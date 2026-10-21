@@ -3,6 +3,7 @@ import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
 import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view'
 import type { Mermaid, MermaidConfig } from 'mermaid'
+import { observeViewport, stopObservingViewport } from './lazyRender'
 
 /** ```mermaid 与社区常用的简写 ```mmd 都当作图表块 */
 const MERMAID_LANGUAGES = new Set(['mermaid', 'mmd'])
@@ -13,7 +14,7 @@ type RenderOutcome = { svg: string } | { error: string }
 
 type WidgetFactory = () => HTMLElement
 
-const pluginKey = new PluginKey('mermaidPreview')
+const pluginKey = new PluginKey<DecorationSet>('mermaidPreview')
 const CACHE_LIMIT = 80
 const RENDER_DELAY = 180
 
@@ -93,6 +94,7 @@ async function renderDiagram(code: string, theme: ThemeName): Promise<RenderOutc
 }
 
 function paint(figure: HTMLElement, outcome: RenderOutcome) {
+  figure.style.minHeight = ''
   if ('svg' in outcome) {
     figure.dataset.state = 'ready'
     figure.innerHTML = outcome.svg
@@ -105,27 +107,57 @@ function paint(figure: HTMLElement, outcome: RenderOutcome) {
   figure.replaceChildren(hint)
 }
 
-function buildFigure(code: string, theme: ThemeName): HTMLElement {
-  const figure = document.createElement('div')
-  figure.className = 'mermaid-figure'
-  figure.contentEditable = 'false'
-  figure.dataset.state = 'pending'
+/** 滚出视口后丢掉 SVG，占位高度保留，滚回来直接从缓存恢复 */
+function releaseDiagram(figure: HTMLElement) {
+  if (figure.dataset.state === 'pending') {
+    // 还在异步渲染，标记一下让渲染结果直接丢掉
+    figure.dataset.state = 'idle'
+    return
+  }
+  if (figure.dataset.state !== 'ready') return
+
+  const height = figure.offsetHeight
+  if (height > 0) figure.style.minHeight = `${height}px`
+  figure.dataset.state = 'idle'
+  figure.replaceChildren()
+}
+
+/** 进入视口时才渲染；同一张图滚动时可能被反复触发，这里按状态幂等 */
+function mountDiagram(figure: HTMLElement, code: string, theme: ThemeName) {
+  if (figure.dataset.state === 'ready' || figure.dataset.state === 'pending') return
 
   const cached = renderCache.get(cacheKey(code, theme))
   if (cached) {
     paint(figure, cached)
-    return figure
+    return
   }
 
+  figure.dataset.state = 'pending'
   figure.innerHTML = '<span class="mermaid-figure-hint">图表渲染中…</span>'
 
-  // 打字过程中代码每变一次都会重建图表，用延时合并渲染，避免拖慢输入
+  // 进入视口后再略等一下，打字时不会每键重画
   window.setTimeout(() => {
-    if (!figure.isConnected) return
+    if (!figure.isConnected || figure.dataset.state !== 'pending') return
     void renderDiagram(code, theme).then((outcome) => {
-      if (figure.isConnected) paint(figure, outcome)
+      if (figure.isConnected && figure.dataset.state === 'pending') {
+        paint(figure, outcome)
+      }
     })
   }, RENDER_DELAY)
+}
+
+function buildFigure(code: string, theme: ThemeName): HTMLElement {
+  const figure = document.createElement('div')
+  figure.className = 'mermaid-figure'
+  figure.contentEditable = 'false'
+  figure.dataset.state = 'idle'
+  // 空元素没有面积 IntersectionObserver 不好判断，先给一点占位高度
+  figure.style.minHeight = '40px'
+
+  observeViewport(figure, {
+    mount: () => mountDiagram(figure, code, theme),
+    unmount: () => releaseDiagram(figure),
+  })
 
   return figure
 }
@@ -155,6 +187,8 @@ function buildDecorations(doc: ProseMirrorNode): DecorationSet {
     decorations.push(
       Decoration.widget(pos + node.nodeSize, widgetFactory(code, currentTheme), {
         side: 1,
+        // widget 被移除时停止视口观察
+        destroy: stopObservingViewport,
       }),
     )
   })
@@ -167,10 +201,21 @@ export const MermaidDiagram = Extension.create({
 
   addProseMirrorPlugins() {
     return [
-      new Plugin({
+      new Plugin<DecorationSet>({
         key: pluginKey,
+        state: {
+          init: (_config, state) => buildDecorations(state.doc),
+          /**
+           * 只在文档真正变化或主题切换时重算装饰。
+           * 原来每个事务（含光标移动）都全量遍历文档，长文档输入会被这里拖慢。
+           */
+          apply: (tr, value, _oldState, newState) =>
+            tr.docChanged || tr.getMeta(pluginKey)
+              ? buildDecorations(newState.doc)
+              : value,
+        },
         props: {
-          decorations: (state) => buildDecorations(state.doc),
+          decorations: (state) => pluginKey.getState(state) ?? DecorationSet.empty,
         },
         view: (editorView: EditorView) => {
           redraw = () => {

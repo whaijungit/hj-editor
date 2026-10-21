@@ -2,6 +2,7 @@ import TurndownService from 'turndown'
 import { gfm } from 'turndown-plugin-gfm'
 import katex from 'katex'
 import { lowlight } from './codeLanguages'
+import { isEchartsLanguage, renderEchartsSvg } from './echarts'
 
 const turndown = new TurndownService({
   headingStyle: 'atx',
@@ -142,6 +143,37 @@ function highlightCode(html: string): string {
   return root.innerHTML
 }
 
+/**
+ * 把 ```echarts 代码块渲染成内联 SVG：
+ * 导出文件不依赖 CDN、离线打开也能看到图表，尺寸也与编辑时一致。
+ */
+async function inlineEcharts(html: string, theme: 'light' | 'dark'): Promise<string> {
+  const parsed = new DOMParser().parseFromString(
+    `<div data-export-root>${html}</div>`,
+    'text/html',
+  )
+  const root = parsed.querySelector('[data-export-root]')
+  if (!root) return html
+
+  const blocks = Array.from(root.querySelectorAll('pre > code')).filter((code) => {
+    const language = Array.from(code.classList)
+      .find((name) => name.startsWith('language-'))
+      ?.slice('language-'.length)
+    return isEchartsLanguage(language)
+  })
+
+  for (const code of blocks) {
+    const svg = await renderEchartsSvg(code.textContent ?? '', theme)
+    if (!svg) continue
+    const figure = parsed.createElement('div')
+    figure.className = 'echarts-figure'
+    figure.innerHTML = svg
+    code.closest('pre')?.after(figure)
+  }
+
+  return root.innerHTML
+}
+
 export function downloadText(
   filename: string,
   text: string,
@@ -233,6 +265,14 @@ const EXPORT_STYLES = `
     overflow-x: auto;
   }
   .mermaid-figure svg { max-width: 100%; height: auto; }
+  .echarts-figure {
+    margin: 1.2em 0;
+    padding: 12px;
+    border: 1px solid #e3e6ef;
+    border-radius: 12px;
+    overflow-x: auto;
+  }
+  .echarts-figure svg { max-width: 100%; height: auto; }
   img { max-width: 100%; height: auto; border-radius: 8px; }
   table { width: 100%; border-collapse: collapse; margin: 1.2em 0; }
   th, td { padding: 8px 12px; border: 1px solid #dfe2ee; text-align: left; }
@@ -251,7 +291,12 @@ const EXPORT_STYLES = `
   ul[data-type='taskList'] li[data-checked='true'] > div { color: #8b93a3; text-decoration: line-through; }
 `
 
-export function buildStandaloneHtml(title: string, body: string): string {
+export async function buildStandaloneHtml(
+  title: string,
+  body: string,
+  theme: 'light' | 'dark' = 'light',
+): Promise<string> {
+  const content = await inlineEcharts(highlightCode(renderMath(body)), theme)
   return `<!doctype html>
 <html lang="zh-CN">
   <head>
@@ -265,7 +310,7 @@ export function buildStandaloneHtml(title: string, body: string): string {
     <style>${EXPORT_STYLES}</style>
   </head>
   <body>
-${highlightCode(renderMath(body))}
+${content}
     <script type="module">
       // 图表按需渲染：没有 mermaid 代码块就不加载这 1MB 的库
       const blocks = [

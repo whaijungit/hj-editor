@@ -1,3 +1,9 @@
+import {
+  clearDraftFromDb,
+  loadDraftFromDb,
+  saveDraftToDb,
+} from './draftStore'
+
 export type Draft = {
   html: string
   title: string
@@ -5,6 +11,8 @@ export type Draft = {
 }
 
 const DRAFT_KEY = 'hj-editor:draft:v2'
+/** 超过这个体量只写 IndexedDB：localStorage 同步写入会卡住输入，且很快触到 5MB 上限 */
+const SNAPSHOT_LIMIT = 800_000
 const DOC_WIDTH_KEY = 'hj-editor:doc-width:v1'
 // v2：标题栏默认隐藏，旧版本存下的可见性不再沿用
 const CHROME_KEY = 'hj-editor:chrome:v2'
@@ -27,12 +35,33 @@ export function loadDraft(): Draft | null {
   }
 }
 
+/** 打开文档时先拿 IndexedDB 里的正式草稿；没有就把旧版 localStorage 草稿迁过去 */
+export async function loadDraftAsync(): Promise<Draft | null> {
+  const stored = await loadDraftFromDb()
+  if (stored) return stored
+
+  const snapshot = loadDraft()
+  if (snapshot) void saveDraftToDb(snapshot)
+  return null
+}
+
 export function saveDraft(draft: Draft) {
-  try {
-    window.localStorage.setItem(DRAFT_KEY, JSON.stringify(draft))
-  } catch {
-    // 忽略容量或隐私模式导致的写入失败
+  // localStorage 只留一份小快照，保证下次打开首屏能同步拿到内容
+  if (draft.html.length <= SNAPSHOT_LIMIT) {
+    try {
+      window.localStorage.setItem(DRAFT_KEY, JSON.stringify(draft))
+    } catch {
+      // 忽略容量或隐私模式导致的写入失败
+    }
+  } else {
+    try {
+      window.localStorage.removeItem(DRAFT_KEY)
+    } catch {
+      // 忽略
+    }
   }
+  // 正式数据写 IndexedDB：异步、大容量、只重写变化的分片
+  void saveDraftToDb(draft)
 }
 
 export function clearDraft() {
@@ -41,6 +70,7 @@ export function clearDraft() {
   } catch {
     // 忽略
   }
+  void clearDraftFromDb()
 }
 
 export type ChromeVisibility = {

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { Editor } from '@tiptap/react'
-import { Check, ChevronDown } from 'lucide-react'
+import { Check, ChevronDown, ChevronsDownUp, ChevronsUpDown, Copy } from 'lucide-react'
+import { COLLAPSE_MIN_LINES, isCodeCollapsed, toggleCodeCollapse } from './codeCollapse'
 import {
   CODE_LANGUAGES,
   codeLanguageLabel,
@@ -10,6 +11,9 @@ import {
 
 type CodeBlockInfo = {
   language: string | null
+  pos: number
+  lines: number
+  collapsed: boolean
   rect: { top: number; right: number; bottom: number }
 }
 
@@ -33,8 +37,12 @@ function readCodeBlock(editor: Editor): CodeBlockInfo | null {
     // 代码块滚出视口时不再显示徽标
     if (rect.bottom < 48 || rect.top > window.innerHeight - 24) return null
 
+    const pos = $from.before(depth)
     return {
       language: (node.attrs.language as string | null) ?? null,
+      pos,
+      lines: node.textContent.split('\n').length,
+      collapsed: isCodeCollapsed(editor.state, pos),
       rect: { top: rect.top, right: rect.right, bottom: rect.bottom },
     }
   }
@@ -42,10 +50,25 @@ function readCodeBlock(editor: Editor): CodeBlockInfo | null {
   return null
 }
 
+/** 光标所在代码块的纯文本，供复制按钮使用 */
+function readCodeBlockText(editor: Editor): string {
+  const { $from } = editor.state.selection
+
+  for (let depth = $from.depth; depth > 0; depth -= 1) {
+    const node = $from.node(depth)
+    if (node.type.name === 'codeBlock') return node.textContent
+  }
+
+  return ''
+}
+
 function sameInfo(a: CodeBlockInfo | null, b: CodeBlockInfo | null) {
   if (!a || !b) return a === b
   return (
     a.language === b.language &&
+    a.pos === b.pos &&
+    a.lines === b.lines &&
+    a.collapsed === b.collapsed &&
     a.rect.top === b.rect.top &&
     a.rect.right === b.rect.right &&
     a.rect.bottom === b.rect.bottom
@@ -56,8 +79,25 @@ function sameInfo(a: CodeBlockInfo | null, b: CodeBlockInfo | null) {
 export function CodeBlockLanguage({ editor }: { editor: Editor }) {
   const [info, setInfo] = useState<CodeBlockInfo | null>(null)
   const [open, setOpen] = useState(false)
+  const [copyState, setCopyState] = useState<'idle' | 'done' | 'fail'>('idle')
   const panelRef = useRef<HTMLDivElement>(null)
   const badgeRef = useRef<HTMLButtonElement>(null)
+  const copyTimer = useRef(0)
+
+  useEffect(() => () => window.clearTimeout(copyTimer.current), [])
+
+  const copyCode = useCallback(async () => {
+    const code = readCodeBlockText(editor)
+    if (!code) return
+    try {
+      await navigator.clipboard.writeText(code)
+      setCopyState('done')
+    } catch {
+      setCopyState('fail')
+    }
+    window.clearTimeout(copyTimer.current)
+    copyTimer.current = window.setTimeout(() => setCopyState('idle'), 1600)
+  }, [editor])
 
   const sync = useCallback(() => {
     const next = readCodeBlock(editor)
@@ -150,20 +190,72 @@ export function CodeBlockLanguage({ editor }: { editor: Editor }) {
 
   return (
     <>
-      <button
-        ref={badgeRef}
-        type="button"
-        className="code-lang-badge"
+      <div
+        className="code-block-tools"
+        data-open={open}
         style={{ top: badgeTop, left: rect.right - BADGE_OFFSET }}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        title="切换代码语言"
-        onMouseDown={(event) => event.preventDefault()}
-        onClick={() => setOpen((value) => !value)}
       >
-        {codeLanguageLabel(info.language)}
-        <ChevronDown size={11} />
-      </button>
+        {/* 短代码块不出现折叠按钮；已折叠时始终给一个展开入口 */}
+        {(info.collapsed || info.lines >= COLLAPSE_MIN_LINES) && (
+          <button
+            type="button"
+            className="code-block-fold"
+            title={
+              info.collapsed ? '展开代码块' : `折叠代码块（共 ${info.lines} 行）`
+            }
+            aria-label={info.collapsed ? '展开代码' : '折叠代码'}
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => {
+              toggleCodeCollapse(editor.view, info.pos)
+              sync()
+            }}
+          >
+            {info.collapsed ? (
+              <ChevronsUpDown size={11} />
+            ) : (
+              <ChevronsDownUp size={11} />
+            )}
+            <span>{info.collapsed ? '展开' : '折叠'}</span>
+          </button>
+        )}
+
+        <button
+          type="button"
+          className="code-block-copy"
+          data-state={copyState}
+          title="复制这段代码"
+          aria-label="复制代码"
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => void copyCode()}
+        >
+          {copyState === 'done' ? (
+            <Check size={11} strokeWidth={3} />
+          ) : (
+            <Copy size={11} />
+          )}
+          <span>
+            {copyState === 'done'
+              ? '已复制'
+              : copyState === 'fail'
+                ? '复制失败'
+                : '复制'}
+          </span>
+        </button>
+
+        <button
+          ref={badgeRef}
+          type="button"
+          className="code-lang-badge"
+          aria-haspopup="listbox"
+          aria-expanded={open}
+          title="切换代码语言"
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => setOpen((value) => !value)}
+        >
+          {codeLanguageLabel(info.language)}
+          <ChevronDown size={11} />
+        </button>
+      </div>
 
       {open &&
         createPortal(

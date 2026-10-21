@@ -56,13 +56,18 @@ export function TableToolbar({
   const panelRef = useRef<HTMLDivElement>(null)
 
   const measure = useCallback(() => {
-    if (hidden || !editor.isEditable) {
+    const hide = () => {
       setAnchor(null)
+      setOpen(false)
+    }
+
+    if (hidden || !editor.isEditable) {
+      hide()
       return
     }
     const ctx = getTableContext(editor.state)
     if (!ctx) {
-      setAnchor(null)
+      hide()
       return
     }
     const node = editor.view.nodeDOM(ctx.tablePos) as HTMLElement | null
@@ -71,7 +76,7 @@ export function TableToolbar({
         ? node
         : (node?.querySelector('table') as HTMLTableElement | null)
     if (!table) {
-      setAnchor(null)
+      hide()
       return
     }
     const rect = table.getBoundingClientRect()
@@ -132,10 +137,6 @@ export function TableToolbar({
       document.removeEventListener('keydown', handleKeyDown)
     }
   }, [open])
-
-  useEffect(() => {
-    if (!anchor) setOpen(false)
-  }, [anchor])
 
   if (!anchor) return null
 

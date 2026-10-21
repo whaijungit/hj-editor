@@ -285,7 +285,8 @@
   background: var(--paper);
   border-right: 1px solid var(--border);
   box-shadow: 18px 0 40px -24px rgba(19, 23, 40, 0.35);
-  animation: drawer-in 0.2s ease-out;
+  /* 抽屉式：整块面板从左边缘拉出 */
+  animation: mobile-drawer-in 0.24s cubic-bezier(0.22, 0.8, 0.3, 1);
 }
 
 @keyframes scrim-in {
@@ -297,7 +298,7 @@
   }
 }
 
-@keyframes drawer-in {
+@keyframes mobile-drawer-in {
   from {
     transform: translateX(-100%);
   }
@@ -528,11 +529,11 @@
   box-shadow: var(--shadow);
   /* 不用透明度过渡：面板半透明时正文会透出来，看着像重影 */
   visibility: hidden;
-  transform: translate(6px, -50%) scale(0.97);
-  transform-origin: right center;
+  /* 抽屉式：面板整块贴着标尺向左拉出，不做缩放/淡入 */
+  transform: translate(100%, -50%);
   transition:
-    transform 0.14s ease,
-    visibility 0.14s;
+    transform 0.2s cubic-bezier(0.22, 0.8, 0.3, 1),
+    visibility 0.2s;
 }
 
 .outline-rail-wrap:hover .outline-rail-menu,
@@ -540,7 +541,7 @@
 .outline-rail-wrap:has(:focus-visible) .outline-rail-menu,
 .outline-rail-menu[data-open='true'] {
   visibility: visible;
-  transform: translate(0, -50%) scale(1);
+  transform: translate(0, -50%);
 }
 
 /* 标尺与面板之间的空隙也要能悬停，否则鼠标移向面板时 hover 会先丢失、面板直接收起 */
@@ -798,17 +799,16 @@ body[data-resizing='true'] {
   background: var(--paper);
   border-left: 1px solid var(--border);
   box-shadow: -24px 0 60px -30px rgba(15, 18, 35, 0.4);
-  animation: drawer-in 0.2s ease-out;
+  /* 抽屉式：面板整块从右边缘拉出，不做淡入 */
+  animation: source-drawer-in 0.24s cubic-bezier(0.22, 0.8, 0.3, 1);
 }
 
-@keyframes drawer-in {
+@keyframes source-drawer-in {
   from {
-    transform: translateX(24px);
-    opacity: 0;
+    transform: translateX(100%);
   }
   to {
     transform: translateX(0);
-    opacity: 1;
   }
 }
 
@@ -989,6 +989,141 @@ body[data-resizing='true'] {
   color: var(--text-tertiary);
   font-size: 11.5px;
   line-height: 1.6;
+}
+
+/* ---------- 分享 ---------- */
+.share-dialog {
+  width: min(520px, 100%);
+}
+
+.share-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  color: var(--text);
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.share-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 20px 18px;
+}
+
+.share-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+.share-error {
+  color: var(--danger);
+}
+
+.share-spin {
+  animation: share-spin 0.9s linear infinite;
+}
+
+@keyframes share-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.share-label {
+  margin: 0;
+  color: var(--text-tertiary);
+  font-size: 11.5px;
+  line-height: 1.6;
+}
+
+.share-link-row {
+  display: flex;
+  gap: 8px;
+}
+
+.share-link {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--surface-muted);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.share-link:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.share-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 34px;
+  padding: 0 13px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: var(--accent-strong);
+  color: #fff;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.share-copy:hover {
+  filter: brightness(1.08);
+}
+
+.share-banner {
+  position: fixed;
+  top: 12px;
+  left: 50%;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: min(560px, calc(100vw - 32px));
+  padding: 7px 8px 7px 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--paper);
+  box-shadow: 0 14px 34px -20px rgba(15, 18, 35, 0.55);
+  color: var(--text-secondary);
+  font-size: 12px;
+  transform: translateX(-50%);
+}
+
+.share-banner-label {
+  color: var(--accent-strong);
+  font-weight: 550;
+}
+
+.share-banner button {
+  height: 26px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.share-banner button:hover {
+  background: var(--accent-strong);
+  color: #fff;
 }
 
 /* ---------- 主题设置 ---------- */
@@ -1451,7 +1586,9 @@ body[data-resizing='true'] {
   .outline-rail,
   .outline-rail-bar,
   .outline-rail-menu,
-  .outline-rail-link {
+  .outline-rail-link,
+  .mobile-menu-panel,
+  .source-drawer {
     animation: none;
     transition: none;
   }

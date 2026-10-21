@@ -1,0 +1,16 @@
+[build]
+  command = "pnpm build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "22"
+
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+
+# 分享接口由 Functions 处理（优先于下面的回落规则），其余路径交给单页入口
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

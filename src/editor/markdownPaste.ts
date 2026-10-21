@@ -1,5 +1,6 @@
 import type { Editor } from '@tiptap/core'
 import { marked } from 'marked'
+import { autoDetectCodeBlocks } from './codeDetect'
 
 /** 剪贴板里被包成代码块、但内容其实是 Markdown 的语言标识别名 */
 const MARKDOWN_LANGUAGES = new Set(['markdown', 'md', 'mkd', 'gfm'])
@@ -206,9 +207,12 @@ export function insertMarkdown(editor: Editor, markdown: string): boolean {
         html,
       )
       .run()
+    // 围栏里没写语言时，按代码内容补上语言，便于高亮
+    autoDetectCodeBlocks(editor)
     return true
   }
 
   editor.chain().insertContent(html).run()
+  autoDetectCodeBlocks(editor)
   return true
 }

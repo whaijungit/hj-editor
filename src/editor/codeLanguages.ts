@@ -97,8 +97,9 @@ const LANGUAGE_MODULES: Record<string, LanguageFn> = {
  */
 export const CODE_LANGUAGES: CodeLanguage[] = [
   { id: 'plaintext', label: '纯文本' },
-  // 不是 highlight.js 的语言，由 mermaid.ts 渲染成图表
+  // 不是 highlight.js 的语言，由 mermaid.ts / echarts.ts 渲染成图表
   { id: 'mermaid', label: 'Mermaid 图表' },
+  { id: 'echarts', label: 'ECharts 图表' },
   { id: 'javascript', label: 'JavaScript' },
   { id: 'typescript', label: 'TypeScript' },
   { id: 'jsx', label: 'React (JSX)' },
@@ -195,21 +196,27 @@ const LANGUAGE_ALIASES: Record<string, string> = {
   mk: 'makefile',
   jsonc: 'json',
   json5: 'json',
+  // 图表块的简写，落到 echarts.ts 的渲染器上
+  chart: 'echarts',
+  echart: 'echarts',
 }
+
+const LANGUAGE_IDS = new Set(Object.keys(LANGUAGE_MODULES))
+// 不参与语法高亮、但有专门渲染器的语言
+const NON_HIGHLIGHT_IDS = new Set(['mermaid', 'echarts'])
 
 const lowlight = createLowlight()
 
 lowlight.register(LANGUAGE_MODULES)
 
 for (const [alias, language] of Object.entries(LANGUAGE_ALIASES)) {
+  // 图表语言没有 highlight.js 模块，别名只在 resolveCodeLanguage 里生效
+  if (!LANGUAGE_IDS.has(language)) continue
   lowlight.registerAlias(language, [alias])
 }
 
 export { lowlight }
 
-const LANGUAGE_IDS = new Set(Object.keys(LANGUAGE_MODULES))
-// 不参与语法高亮、但有专门渲染器的语言
-const NON_HIGHLIGHT_IDS = new Set(['mermaid'])
 const LABELS = new Map(CODE_LANGUAGES.map((language) => [language.id, language.label]))
 
 /** 把 js / ts / yml 之类的写法归一到注册过的语言；未知语言返回 null */
@@ -220,7 +227,9 @@ export function resolveCodeLanguage(id: string | null | undefined): string | nul
   if (NON_HIGHLIGHT_IDS.has(normalized)) return normalized
   if (LANGUAGE_IDS.has(normalized)) return normalized
   const alias = LANGUAGE_ALIASES[normalized]
-  return alias && LANGUAGE_IDS.has(alias) ? alias : null
+  if (!alias) return null
+  if (NON_HIGHLIGHT_IDS.has(alias)) return alias
+  return LANGUAGE_IDS.has(alias) ? alias : null
 }
 
 /** 编辑器里显示的语言名，未知语言直接显示原始标识 */

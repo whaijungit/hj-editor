@@ -1,0 +1,247 @@
+/* ---------- 文件预览 ---------- */
+.file-preview-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(16, 18, 23, 0.46);
+  backdrop-filter: blur(3px);
+}
+
+.file-preview-dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(1180px, 96vw);
+  height: min(880px, 92vh);
+  overflow: hidden;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: 0 28px 70px rgba(15, 17, 21, 0.32);
+}
+
+.file-preview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px 10px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.file-preview-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.file-preview-title > span {
+  overflow: hidden;
+  color: var(--text);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-preview-title em {
+  flex: none;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  font-style: normal;
+}
+
+.file-preview-tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.file-preview-btn,
+.file-preview-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-muted);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.file-preview-btn:hover,
+.file-preview-primary:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-muted-strong);
+}
+
+.file-preview-primary {
+  border-color: transparent;
+  background: var(--text);
+  color: var(--paper);
+}
+
+.file-preview-primary:hover {
+  background: var(--text);
+  opacity: 0.88;
+}
+
+.file-preview-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.file-preview-icon:hover {
+  background: var(--surface-muted-strong);
+  color: var(--text);
+}
+
+.file-preview-body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  background: var(--surface-muted);
+}
+
+.file-preview-body.is-dragging::after {
+  position: absolute;
+  inset: 10px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  content: '松开即可预览这个文件';
+  border: 2px dashed var(--border-strong);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface) 82%, transparent);
+  color: var(--text-secondary);
+  font-size: 13px;
+  pointer-events: none;
+}
+
+.file-preview-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  height: 100%;
+  padding: 40px 24px;
+  overflow: auto;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.file-preview-empty p {
+  margin: 0;
+  font-size: 13px;
+}
+
+.file-preview-formats {
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+.file-preview-url {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: min(440px, 100%);
+  margin-top: 14px;
+  padding: 4px 4px 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text-tertiary);
+}
+
+.file-preview-url input {
+  flex: 1;
+  min-width: 0;
+  height: 26px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12.5px;
+  outline: none;
+}
+
+.file-preview-url button {
+  height: 26px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 7px;
+  background: var(--surface-muted-strong);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.file-preview-url button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.file-preview-status {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 24px;
+  background: color-mix(in srgb, var(--surface-muted) 88%, transparent);
+  color: var(--text-secondary);
+  font-size: 13px;
+  text-align: center;
+}
+
+.file-preview-status.is-error {
+  color: #dc2626;
+}
+
+.file-preview-spin {
+  animation: file-preview-spin 0.9s linear infinite;
+}
+
+@keyframes file-preview-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 720px) {
+  .file-preview-overlay {
+    padding: 0;
+  }
+
+  .file-preview-dialog {
+    width: 100vw;
+    height: 100vh;
+    border: 0;
+    border-radius: 0;
+  }
+}

@@ -8,6 +8,7 @@ import {
   Code2,
   Download,
   Eye,
+  FileSearch,
   FileText,
   Menu as MenuIcon,
   Moon,
@@ -56,10 +57,12 @@ export type TitleBarProps = {
   onOpenTheme: () => void
   onNew: () => void
   onImport: () => void
+  onOpenPreview: () => void
   onSave: () => void
   onExportMarkdown: () => void
   onExportHtml: () => void
   onCopyMarkdown: () => void
+  onShare: () => void
   onShowHelp: (tab: 'syntax' | 'shortcuts') => void
 }
 
@@ -228,10 +231,12 @@ export function TitleBar({
   onOpenTheme,
   onNew,
   onImport,
+  onOpenPreview,
   onSave,
   onExportMarkdown,
   onExportHtml,
   onCopyMarkdown,
+  onShare,
   onShowHelp,
 }: TitleBarProps) {
   const [openMenu, setOpenMenu] = useState<string | null>(null)
@@ -289,11 +294,14 @@ export function TitleBar({
       items: [
         { label: '新建文稿', shortcut: 'Ctrl N', run: onNew },
         { label: '导入文件…', shortcut: 'Ctrl O', run: onImport },
+        { label: '预览文件…', run: onOpenPreview },
         { label: '立即保存草稿', shortcut: 'Ctrl S', run: onSave },
         'separator',
         { label: '导出 Markdown (.md)', run: onExportMarkdown },
         { label: '导出 HTML (.html)', run: onExportHtml },
         { label: '复制 Markdown', run: onCopyMarkdown },
+        'separator',
+        { label: '分享链接…', run: onShare },
       ],
     },
     {
@@ -596,6 +604,15 @@ export function TitleBar({
           onClick={onToggleLaser}
         >
           <Zap size={17} />
+        </button>
+        <button
+          type="button"
+          className="icon-btn"
+          aria-label="文件预览"
+          title="预览本地文件"
+          onClick={onOpenPreview}
+        >
+          <FileSearch size={17} />
         </button>
         <button
           type="button"

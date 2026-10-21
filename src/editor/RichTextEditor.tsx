@@ -6,7 +6,7 @@ import {
   type ChangeEvent,
   type CSSProperties,
 } from 'react'
-import { PanelBottom, PanelTop } from 'lucide-react'
+import { Link2, PanelBottom, PanelTop } from 'lucide-react'
 import {
   EditorContent,
   useEditor,
@@ -17,6 +17,11 @@ import { BubbleToolbar } from './Toolbar'
 import { CodeBlockLanguage } from './CodeBlockLanguage'
 import { TableToolbar } from './TableToolbar'
 import { editorExtensions } from './extensions'
+import {
+  autoDetectCodeBlocks,
+  detectCurrentCodeBlock,
+  isUndeterminedLanguage,
+} from './codeDetect'
 import { initialContent } from './initialContent'
 import {
   extractMarkdownFromClipboard,
@@ -36,10 +41,19 @@ import { StatusBar } from './StatusBar'
 import { SourceDrawer } from './SourceDrawer'
 import { HelpDialog, type HelpTab } from './HelpDialog'
 import { ThemeDialog } from './ThemeDialog'
+import { FilePreview } from './FilePreview'
+import { ShareDialog } from './ShareDialog'
+import {
+  fetchSharedDocument,
+  publishDocument,
+  SHARE_QUERY,
+  sharedDocIdFromUrl,
+} from './share'
 import { useCustomFonts } from './customFonts'
 import { useBodyFontLoad } from './useBodyFontLoad'
 import { LaserPointer } from './LaserPointer'
 import { setMermaidTheme } from './mermaid'
+import { setEchartsTheme } from './echarts'
 import {
   clearLaserFlashes,
   spawnLaserFlash,
@@ -67,6 +81,7 @@ import {
   loadChromeVisibility,
   loadDocWidth,
   loadDraft,
+  loadDraftAsync,
   saveChromeVisibility,
   saveDocWidth,
   saveDraft,
@@ -87,13 +102,16 @@ const TYPEWRITER_START_DELAY = 420
 const TYPEWRITER_FLASH_INTERVAL = 90
 
 export function RichTextEditor() {
-  const [draft] = useState(loadDraft)
+  // 同步快照保证首屏不闪；正式草稿在 IndexedDB 里，异步补齐
+  const [draft, setDraft] = useState(loadDraft)
+  const [hydrated, setHydrated] = useState(false)
   const [title, setTitle] = useState(draft?.title ?? '未命名文稿')
   const [themeConfig, setThemeConfig] = useState<ThemeConfig>(loadThemeConfig)
   const [systemDark, setSystemDark] = useState(
     () => window.matchMedia('(prefers-color-scheme: dark)').matches,
   )
   const [themeOpen, setThemeOpen] = useState(false)
+  const [previewOpen, setPreviewOpen] = useState(false)
   const [docWidth, setDocWidth] = useState(loadDocWidth)
   const [focusMode, setFocusMode] = useState(false)
   const [typewriterMode, setTypewriterMode] = useState(false)
@@ -115,11 +133,24 @@ export function RichTextEditor() {
   const [helpTab, setHelpTab] = useState<HelpTab>('syntax')
   const [toast, setToast] = useState<string | null>(null)
 
+  const [shareOpen, setShareOpen] = useState(false)
+  const [sharePublishing, setSharePublishing] = useState(false)
+  const [shareUrl, setShareUrl] = useState('')
+  const [shareError, setShareError] = useState<string | null>(null)
+  const [sharedReadonly, setSharedReadonly] = useState(false)
+  const [sharedLoading, setSharedLoading] = useState(false)
+
   const editorRef = useRef<Editor | null>(null)
   const titleRef = useRef(title)
   const dirtyRef = useRef(false)
+  /** 用户是否真的动过键盘 / 粘贴：异步补载草稿时据此决定要不要覆盖现有内容 */
+  const userTouchedRef = useRef(false)
+  const draftRef = useRef(draft)
   const toastTimer = useRef<number | undefined>(undefined)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  /** 打开分享链接时固定下来的 id：只读期间既不写本地草稿，也不重新拉取 */
+  const sharedIdRef = useRef<string | null>(sharedDocIdFromUrl())
+  const sharedReadonlyRef = useRef(false)
 
   titleRef.current = title
 
@@ -133,6 +164,8 @@ export function RichTextEditor() {
     (withToast: boolean) => {
       const editor = editorRef.current
       if (!editor) return
+      // 只读分享不落本地草稿：否则打开别人的链接会覆盖自己的文稿
+      if (sharedReadonlyRef.current) return
       const html = editor.getHTML()
       saveDraft({ html, title: titleRef.current, updatedAt: Date.now() })
       if (withToast) notify('草稿已保存到浏览器')
@@ -181,6 +214,12 @@ export function RichTextEditor() {
       try {
         const { title: importedTitle, html } = await readImportFile(file)
         editor.commands.setContent(html, { emitUpdate: true })
+        // 导入的文稿里常有没标语言的围栏代码块，按内容补齐
+        autoDetectCodeBlocks(editor)
+        // 从只读分享里导入，等于是明确要接管这篇内容，恢复编辑能力
+        sharedReadonlyRef.current = false
+        setSharedReadonly(false)
+        editor.setEditable(true)
         setTitle(importedTitle)
         dirtyRef.current = true
         notify(`已导入 ${file.name}`)
@@ -206,7 +245,8 @@ export function RichTextEditor() {
 
   const editor = useEditor({
     extensions: editorExtensions,
-    content: draft?.html ?? initialContent,
+    // 分享模式先留空，等接口返回直接铺内容，避免自己的草稿闪一下
+    content: sharedIdRef.current ? '<p></p>' : (draft?.html ?? initialContent),
     editorProps: {
       attributes: {
         class: 'tiptap-content',
@@ -228,6 +268,20 @@ export function RichTextEditor() {
           return false
         }
 
+        // 往没标语言的代码块里粘贴代码：交给默认粘贴，粘贴完再按内容补语言
+        const activeEditor = editorRef.current
+        if (activeEditor) {
+          const { $from } = activeEditor.state.selection
+          if (
+            $from.parent.type.spec.code &&
+            isUndeterminedLanguage($from.parent.attrs.language)
+          ) {
+            window.requestAnimationFrame(() => {
+              detectCurrentCodeBlock(activeEditor)
+            })
+          }
+        }
+
         const markdown = extractMarkdownFromClipboard(
           clipboard.getData('text/html'),
           clipboard.getData('text/plain'),
@@ -244,6 +298,7 @@ export function RichTextEditor() {
         ) {
           return false
         }
+
 
         event.preventDefault()
         insertMarkdown(current, markdown)
@@ -301,6 +356,91 @@ export function RichTextEditor() {
 
   if (editor) editorRef.current = editor
 
+  useEffect(() => {
+    draftRef.current = draft
+  }, [draft])
+
+  // 首屏用的是 localStorage 快照；IndexedDB 里的分片草稿更完整，异步补齐
+  useEffect(() => {
+    // 分享链接优先：不把本地草稿盖到分享文稿上
+    if (sharedIdRef.current) {
+      setHydrated(true)
+      return
+    }
+
+    let alive = true
+    void loadDraftAsync().then((stored) => {
+      if (!alive) return
+      if (!stored) {
+        setHydrated(true)
+        return
+      }
+
+      const snapshot = draftRef.current
+      if (snapshot && snapshot.updatedAt >= stored.updatedAt) {
+        setHydrated(true)
+        return
+      }
+
+      if (!snapshot) setTitle(stored.title)
+
+      const target = editorRef.current
+      // 用户已经开始打字就不覆盖，避免刚输入的内容被异步结果冲掉
+      if (target && !userTouchedRef.current && target.getHTML() !== stored.html) {
+        target.commands.setContent(stored.html, { emitUpdate: false })
+      }
+
+      setDraft(stored)
+      setHydrated(true)
+    })
+    return () => {
+      alive = false
+    }
+  }, [])
+
+  // 带 ?doc= 打开时拉取分享文稿，以只读方式呈现，避免误改后覆盖本地草稿
+  useEffect(() => {
+    const id = sharedIdRef.current
+    if (!id) return
+
+    let alive = true
+    setSharedLoading(true)
+    void fetchSharedDocument(id)
+      .then((doc) => {
+        if (!alive) return
+        const target = editorRef.current
+        if (!target) return
+        target.commands.setContent(doc.html, { emitUpdate: false })
+        target.setEditable(false)
+        sharedReadonlyRef.current = true
+        setSharedReadonly(true)
+        setTitle(doc.title)
+      })
+      .catch(async (error: unknown) => {
+        if (!alive) return
+        notify(error instanceof Error ? error.message : '分享文稿加载失败')
+        // 分享失效时退回本地草稿，别让页面一直空着
+        sharedIdRef.current = null
+        const url = new URL(window.location.href)
+        url.searchParams.delete(SHARE_QUERY)
+        window.history.replaceState(null, '', url.toString())
+        const stored = await loadDraftAsync()
+        if (!alive) return
+        const target = editorRef.current
+        if (target && stored) {
+          target.commands.setContent(stored.html, { emitUpdate: false })
+          setTitle(stored.title)
+        }
+      })
+      .finally(() => {
+        if (alive) setSharedLoading(false)
+      })
+
+    return () => {
+      alive = false
+    }
+  }, [notify])
+
   const resolvedTheme = resolveThemeMode(themeConfig, systemDark)
   const { status: fontStatus, retry: retryFont } = useBodyFontLoad(
     themeConfig.bodyFont,
@@ -321,6 +461,7 @@ export function RichTextEditor() {
     applyTheme(themeConfig, resolvedTheme)
     // 图表的配色跟随主题，切换后需要重画
     setMermaidTheme(resolvedTheme)
+    setEchartsTheme(resolvedTheme)
     saveThemeConfig(themeConfig)
     // customFontMetas 变化意味着导入字体列表就绪，需要重新解析字体栈
   }, [themeConfig, resolvedTheme, customFontMetas])
@@ -376,6 +517,7 @@ export function RichTextEditor() {
     if (!editor) return
     const markDirty = () => {
       dirtyRef.current = true
+      userTouchedRef.current = true
     }
     editor.on('update', markDirty)
     return () => {
@@ -383,19 +525,56 @@ export function RichTextEditor() {
     }
   }, [editor])
 
+  /**
+   * 保存策略：输入停下 900ms 后落盘，整篇序列化（getHTML）放到浏览器空闲时段。
+   * 原实现每 1.2s 无条件轮询 + 同步写 localStorage，长文档输入时会被整篇序列化拖慢。
+   */
   useEffect(() => {
     if (!editor) return
-    const timer = window.setInterval(() => {
-      if (!dirtyRef.current) return
-      dirtyRef.current = false
-      persist(false)
-    }, 1200)
+    const idleWindow = window as unknown as {
+      requestIdleCallback?: (
+        callback: () => void,
+        options?: { timeout: number },
+      ) => number
+      cancelIdleCallback?: (handle: number) => void
+    }
+    let debounceTimer = 0
+    let idleHandle = 0
+    let disposed = false
+
+    const flush = () => {
+      if (disposed || !dirtyRef.current) return
+      const run = () => {
+        if (disposed || !dirtyRef.current) return
+        dirtyRef.current = false
+        persist(false)
+      }
+      if (typeof idleWindow.requestIdleCallback === 'function') {
+        idleHandle = idleWindow.requestIdleCallback(run, { timeout: 2000 })
+      } else {
+        idleHandle = window.setTimeout(run, 200)
+      }
+    }
+
+    const schedule = () => {
+      dirtyRef.current = true
+      window.clearTimeout(debounceTimer)
+      debounceTimer = window.setTimeout(flush, 900)
+    }
 
     const handleBeforeUnload = () => persist(false)
     window.addEventListener('beforeunload', handleBeforeUnload)
+    editor.on('update', schedule)
 
     return () => {
-      window.clearInterval(timer)
+      disposed = true
+      window.clearTimeout(debounceTimer)
+      if (typeof idleWindow.cancelIdleCallback === 'function') {
+        idleWindow.cancelIdleCallback(idleHandle)
+      } else {
+        window.clearTimeout(idleHandle)
+      }
+      editor.off('update', schedule)
       window.removeEventListener('beforeunload', handleBeforeUnload)
       persist(false)
     }
@@ -436,14 +615,24 @@ export function RichTextEditor() {
       return element instanceof HTMLElement ? element : null
     }
 
-    const updateFocusBlock = () => {
+    const clearFocusBlocks = () => {
       editor.view.dom
         .querySelectorAll('.is-focus-block')
         .forEach((element) => element.classList.remove('is-focus-block'))
-      if (!focusMode) return
-      resolveActiveBlock()?.classList.add('is-focus-block')
     }
 
+    // 只改动「当前块」这一个元素：长文档里每键都全量 querySelectorAll 是笔冤枉开销
+    let activeBlock: HTMLElement | null = null
+    const updateFocusBlock = () => {
+      const next = focusMode ? resolveActiveBlock() : null
+      if (next === activeBlock) return
+      activeBlock?.classList.remove('is-focus-block')
+      activeBlock = next
+      activeBlock?.classList.add('is-focus-block')
+    }
+
+    clearFocusBlocks()
+    activeBlock = null
     updateFocusBlock()
     editor.on('selectionUpdate', updateFocusBlock)
     editor.on('update', updateFocusBlock)
@@ -476,6 +665,10 @@ export function RichTextEditor() {
   // 打开页面时把示例文稿逐字敲出来；任意点击 / 按键立即结束
   useEffect(() => {
     if (!editor) return
+    // 分享文稿不做打字演示
+    if (sharedIdRef.current) return
+    // 等 IndexedDB 里的正式草稿到位：否则会先把示例文稿敲一遍，再被真实内容顶掉
+    if (!hydrated) return
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
 
     const isExample =
@@ -579,7 +772,7 @@ export function RichTextEditor() {
     }, TYPEWRITER_START_DELAY)
 
     return finish
-  }, [editor, draft])
+  }, [editor, draft, hydrated])
 
   const navigateTo = useCallback((pos: number) => {
     const editor = editorRef.current
@@ -602,16 +795,21 @@ export function RichTextEditor() {
     notify('Markdown 文件已导出')
   }, [notify])
 
-  const exportHtml = useCallback(() => {
+  const exportHtml = useCallback(async () => {
     const editor = editorRef.current
     if (!editor) return
+    const html = await buildStandaloneHtml(
+      titleRef.current,
+      editor.getHTML(),
+      resolvedTheme,
+    )
     downloadText(
       `${safeFileName(titleRef.current)}.html`,
-      buildStandaloneHtml(titleRef.current, editor.getHTML()),
+      html,
       'text/html;charset=utf-8',
     )
     notify('HTML 文件已导出')
-  }, [notify])
+  }, [notify, resolvedTheme])
 
   const copyMarkdown = useCallback(async () => {
     const editor = editorRef.current
@@ -622,6 +820,66 @@ export function RichTextEditor() {
     } catch {
       notify('浏览器未授权剪贴板，请使用源码面板手动复制')
     }
+  }, [notify])
+
+  const publishShare = useCallback(async () => {
+    const editor = editorRef.current
+    if (!editor) return
+    setSharePublishing(true)
+    setShareError(null)
+    setShareUrl('')
+    try {
+      const url = await publishDocument(titleRef.current, editor.getHTML())
+      setShareUrl(url)
+      try {
+        await navigator.clipboard.writeText(url)
+        notify('分享链接已复制')
+      } catch {
+        notify('链接已生成，可手动复制')
+      }
+    } catch (error) {
+      setShareError(
+        error instanceof Error ? error.message : '分享失败，请稍后再试',
+      )
+    } finally {
+      setSharePublishing(false)
+    }
+  }, [notify])
+
+  const openShare = useCallback(() => {
+    setShareOpen(true)
+    void publishShare()
+  }, [publishShare])
+
+  const copyShareUrl = useCallback(async () => {
+    if (!shareUrl) return
+    try {
+      await navigator.clipboard.writeText(shareUrl)
+      notify('分享链接已复制')
+    } catch {
+      notify('复制失败，请手动选择链接')
+    }
+  }, [notify, shareUrl])
+
+  const closeShare = useCallback(() => setShareOpen(false), [])
+
+  /** 只读分享转成本地文稿：恢复编辑、写回草稿，并摘掉地址栏里的 doc 参数 */
+  const forkSharedDocument = useCallback(() => {
+    const editor = editorRef.current
+    if (!editor) return
+    if (
+      !window.confirm('会把分享文稿复制为本地草稿，当前草稿将被覆盖。确定继续吗？')
+    ) {
+      return
+    }
+    editor.setEditable(true)
+    sharedReadonlyRef.current = false
+    setSharedReadonly(false)
+    dirtyRef.current = true
+    const url = new URL(window.location.href)
+    url.searchParams.delete(SHARE_QUERY)
+    window.history.replaceState(null, '', url.toString())
+    notify('已转为本地文稿，修改会自动保存')
   }, [notify])
 
   const handleSourceCopy = useCallback(async () => {
@@ -637,6 +895,10 @@ export function RichTextEditor() {
   const newDocument = useCallback(() => {
     if (!window.confirm('新建文稿会清空当前内容，确定继续吗？')) return
     editorRef.current?.commands.clearContent(true)
+    // 在只读分享里新建文稿，同样要退出只读状态
+    editorRef.current?.setEditable(true)
+    sharedReadonlyRef.current = false
+    setSharedReadonly(false)
     setTitle('未命名文稿')
     clearDraft()
     dirtyRef.current = false
@@ -683,12 +945,29 @@ export function RichTextEditor() {
           onOpenTheme={() => setThemeOpen(true)}
           onNew={newDocument}
           onImport={openImportPicker}
+          onOpenPreview={() => setPreviewOpen(true)}
           onSave={() => persist(true)}
           onExportMarkdown={exportMarkdown}
           onExportHtml={exportHtml}
           onCopyMarkdown={copyMarkdown}
+          onShare={openShare}
           onShowHelp={showHelp}
         />
+      )}
+
+      {sharedLoading && (
+        <div className="share-banner" role="status">
+          正在打开分享文稿…
+        </div>
+      )}
+
+      {sharedReadonly && !sharedLoading && (
+        <div className="share-banner" role="status">
+          <span className="share-banner-label">只读分享</span>
+          <button type="button" onClick={forkSharedDocument}>
+            复制到本地编辑
+          </button>
+        </div>
       )}
 
       <div
@@ -760,6 +1039,15 @@ export function RichTextEditor() {
               状态栏
             </button>
           )}
+          <button
+            type="button"
+            title="分享文稿"
+            aria-label="分享文稿"
+            onClick={openShare}
+          >
+            <Link2 size={14} />
+            分享
+          </button>
         </div>
       )}
 
@@ -786,6 +1074,22 @@ export function RichTextEditor() {
         onReset={() => setThemeConfig(DEFAULT_THEME_CONFIG)}
         onRetryFont={retryFont}
         onClose={() => setThemeOpen(false)}
+      />
+
+      <FilePreview
+        open={previewOpen}
+        theme={resolvedTheme}
+        onClose={() => setPreviewOpen(false)}
+      />
+
+      <ShareDialog
+        open={shareOpen}
+        publishing={sharePublishing}
+        url={shareUrl}
+        error={shareError}
+        onCopy={copyShareUrl}
+        onRetry={publishShare}
+        onClose={closeShare}
       />
 
       {typingDemo && (

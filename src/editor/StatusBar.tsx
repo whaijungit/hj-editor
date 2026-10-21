@@ -1,4 +1,23 @@
-import { useEditorState, type Editor } from '@tiptap/react'
+import { useEffect, useState } from 'react'
+import type { Editor } from '@tiptap/react'
+
+type DocStats = {
+  characters: number
+  words: number
+  paragraphs: number
+  minutes: number
+}
+
+function readStats(editor: Editor): DocStats {
+  const text = editor.getText()
+  const words = text.replace(/\s/g, '').length
+  return {
+    characters: text.length,
+    words,
+    paragraphs: editor.state.doc.childCount,
+    minutes: Math.max(1, Math.round(words / 350)),
+  }
+}
 
 export function StatusBar({
   editor,
@@ -16,19 +35,27 @@ export function StatusBar({
   /** 打字演示期间还没敲完，先别把全文字数亮出来 */
   typing?: boolean
 }) {
-  const stats = useEditorState({
-    editor,
-    selector: ({ editor }) => {
-      const text = editor.getText()
-      const words = text.replace(/\s/g, '').length
-      return {
-        characters: text.length,
-        words,
-        paragraphs: editor.state.doc.childCount,
-        minutes: Math.max(1, Math.round(words / 350)),
-      }
-    },
-  })
+  /**
+   * 字数统计要遍历整篇文本（O(n)）。原来走 useEditorState，每次事务都会同步算一遍，
+   * 长文档里等于每个按键都全文扫一次；这里合并成 300ms 一次。
+   */
+  const [stats, setStats] = useState(() => readStats(editor))
+
+  useEffect(() => {
+    let timer = 0
+    const run = () => setStats(readStats(editor))
+    const schedule = () => {
+      window.clearTimeout(timer)
+      timer = window.setTimeout(run, 300)
+    }
+
+    run()
+    editor.on('update', schedule)
+    return () => {
+      window.clearTimeout(timer)
+      editor.off('update', schedule)
+    }
+  }, [editor])
 
   return (
     <footer className="statusbar">

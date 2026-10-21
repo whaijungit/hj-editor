@@ -13,6 +13,8 @@ import { TextAlign } from '@tiptap/extension-text-align'
 import { TextStyle } from '@tiptap/extension-text-style'
 import { StarterKit } from '@tiptap/starter-kit'
 import { DEFAULT_CODE_LANGUAGE, lowlight } from './codeLanguages'
+import { CodeCollapse } from './codeCollapse'
+import { EchartsDiagram } from './echarts'
 import { BlockMath, InlineMath } from './math'
 import { MermaidDiagram } from './mermaid'
 import { TypingPop, TypingReveal } from './typingReveal'
@@ -36,13 +38,20 @@ export const editorExtensions = [
     enableTabIndentation: true,
     tabSize: 2,
   }),
+  // 长代码块可折叠/展开（只影响显示，不改文档）
+  CodeCollapse,
   TextStyle,
   Color,
   Highlight.configure({ multicolor: true }),
   TextAlign.configure({ types: ['heading', 'paragraph'] }),
   TaskList,
   TaskItem.configure({ nested: true }),
-  Image.configure({ inline: false, allowBase64: true }),
+  // loading=lazy：长文档里的图片只在滚到附近时解码绘制
+  Image.configure({
+    inline: false,
+    allowBase64: true,
+    HTMLAttributes: { loading: 'lazy', decoding: 'async' },
+  }),
   Table.configure({ resizable: true }),
   TableRow,
   TableHeader,
@@ -52,8 +61,10 @@ export const editorExtensions = [
   }),
   InlineMath,
   BlockMath,
-  // ```mermaid 代码块下方渲染成图表
+  // ```mermaid 代码块下方渲染成流程图
   MermaidDiagram,
+  // ```echarts 代码块下方渲染成数据图表
+  EchartsDiagram,
   // 首屏把示例文稿逐字敲出来
   TypingReveal,
   // 自己敲字时也来一点「点赞」反馈
