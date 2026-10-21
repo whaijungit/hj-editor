@@ -6,7 +6,7 @@ import {
   type ChangeEvent,
   type CSSProperties,
 } from 'react'
-import { Link2, PanelBottom, PanelTop } from 'lucide-react'
+import { Link2, PanelBottom, PanelTop, Paperclip } from 'lucide-react'
 import {
   EditorContent,
   useEditor,
@@ -42,6 +42,8 @@ import { SourceDrawer } from './SourceDrawer'
 import { HelpDialog, type HelpTab } from './HelpDialog'
 import { ThemeDialog } from './ThemeDialog'
 import { FilePreview } from './FilePreview'
+import { FILE_OPEN_EVENT, insertFileBlock } from './fileBlock'
+import { uploadFile } from './fileStore'
 import { ShareDialog } from './ShareDialog'
 import {
   fetchSharedDocument,
@@ -108,6 +110,11 @@ export function RichTextEditor() {
   )
   const [themeOpen, setThemeOpen] = useState(false)
   const [previewOpen, setPreviewOpen] = useState(false)
+  /** 从正文卡片点开时带过来的文件，null 表示只是打开预览弹窗 */
+  const [previewFile, setPreviewFile] = useState<{
+    url: string
+    name: string
+  } | null>(null)
   const [docWidth, setDocWidth] = useState(loadDocWidth)
   const [focusMode, setFocusMode] = useState(false)
   const [typewriterMode, setTypewriterMode] = useState(false)
@@ -190,6 +197,30 @@ export function RichTextEditor() {
       })
   }, [])
 
+  /** 非图片文件：传到文件服务，换回地址后插成文件卡片 */
+  const attachFiles = useCallback(
+    async (files: File[], pos?: number) => {
+      const editor = editorRef.current
+      if (!editor || !files.length) return
+
+      if (typeof pos === 'number') {
+        editor.chain().focus().setTextSelection(pos).run()
+      }
+
+      for (const file of files) {
+        try {
+          const stored = await uploadFile(file)
+          insertFileBlock(editor, stored)
+          notify(`已插入 ${stored.name}`)
+        } catch (error) {
+          notify(error instanceof Error ? error.message : '文件上传失败')
+          break
+        }
+      }
+    },
+    [notify],
+  )
+
   const importFile = useCallback(
     async (file: File) => {
       const editor = editorRef.current
@@ -259,6 +290,14 @@ export function RichTextEditor() {
           return true
         }
 
+        // 剪贴板里是 docx/pdf 之类的文件：当附件上传，不当作文本处理
+        const attachments = files.filter((file) => !canImportFile(file))
+        if (attachments.length) {
+          event.preventDefault()
+          void attachFiles(attachments)
+          return true
+        }
+
         // Shift + 粘贴保留纯文本原文，跳过 Markdown 智能解析
         if ((event as ClipboardEvent & { shiftKey?: boolean }).shiftKey) {
           return false
@@ -304,13 +343,13 @@ export function RichTextEditor() {
         const files = Array.from(event.dataTransfer?.files ?? [])
         if (!files.length) return false
 
+        const coords = view.posAtCoords({
+          left: event.clientX,
+          top: event.clientY,
+        })
         const images = files.filter((file) => file.type.startsWith('image/'))
         if (images.length) {
           event.preventDefault()
-          const coords = view.posAtCoords({
-            left: event.clientX,
-            top: event.clientY,
-          })
           const current = editorRef.current
           if (coords && current) {
             current.chain().focus().setTextSelection(coords.pos).run()
@@ -321,9 +360,15 @@ export function RichTextEditor() {
 
         // 拖入 Markdown / HTML / 文本文件时直接导入
         const importable = files.find(canImportFile)
-        if (!importable) return false
+        if (importable) {
+          event.preventDefault()
+          void importFile(importable)
+          return true
+        }
+
+        // 其余文件当附件：上传后在落点插入文件卡片
         event.preventDefault()
-        void importFile(importable)
+        void attachFiles(files, coords?.pos)
         return true
       },
       handleKeyDown: (_view, event) => {
@@ -451,6 +496,18 @@ export function RichTextEditor() {
 
     query.addEventListener('change', handleChange)
     return () => query.removeEventListener('change', handleChange)
+  }, [])
+
+  // 正文文件卡片被点开：交给预览弹窗渲染
+  useEffect(() => {
+    const handleOpen = (event: Event) => {
+      const detail = (event as CustomEvent<{ url: string; name: string }>).detail
+      if (!detail?.url) return
+      setPreviewFile({ url: detail.url, name: detail.name || '文件预览' })
+      setPreviewOpen(true)
+    }
+    document.addEventListener(FILE_OPEN_EVENT, handleOpen)
+    return () => document.removeEventListener(FILE_OPEN_EVENT, handleOpen)
   }, [])
 
   useEffect(() => {
@@ -951,7 +1008,10 @@ export function RichTextEditor() {
           onOpenTheme={() => setThemeOpen(true)}
           onNew={newDocument}
           onImport={openImportPicker}
-          onOpenPreview={() => setPreviewOpen(true)}
+          onOpenPreview={() => {
+            setPreviewFile(null)
+            setPreviewOpen(true)
+          }}
           onSave={() => persist(true)}
           onExportMarkdown={exportMarkdown}
           onExportHtml={exportHtml}
@@ -1021,6 +1081,20 @@ export function RichTextEditor() {
 
       <LaserPointer active={laserActive} onExit={closeLaser} />
 
+      {/* 标题栏默认隐藏，所以插入文件留一个常驻入口 */}
+      {!typingDemo && !laserActive && !sourceOpen && !focusMode && (
+        <button
+          type="button"
+          className="insert-file-fab"
+          aria-label="插入文件"
+          title="插入文件到光标处，也可以输入 /file 后按空格"
+          onClick={() => editor.chain().focus().insertFileUpload().run()}
+        >
+          <Paperclip size={15} />
+          插入文件
+        </button>
+      )}
+
       {((titleBarHidden && !isMobile) || statusBarHidden) && (
         <div className="chrome-restore" role="group" aria-label="显示界面元素">
           {titleBarHidden && !isMobile && (
@@ -1085,6 +1159,7 @@ export function RichTextEditor() {
       <FilePreview
         open={previewOpen}
         theme={resolvedTheme}
+        initial={previewFile}
         onClose={() => setPreviewOpen(false)}
       />
 

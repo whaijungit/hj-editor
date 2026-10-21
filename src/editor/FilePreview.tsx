@@ -3,7 +3,6 @@
  * 预览器（@file-viewer/react-full）体积较大，等真正打开时才动态加载。
  */
 import {
-  lazy,
   Suspense,
   useCallback,
   useEffect,
@@ -16,12 +15,8 @@ import {
 import { createPortal } from 'react-dom'
 import { FileSearch, FolderOpen, Link2, Loader2, Upload, X } from 'lucide-react'
 import type { ViewerOptions, ViewerState } from '@file-viewer/react-full'
+import { LazyFileViewer } from './FileViewerLazy'
 import './filePreview.css'
-
-const LazyFileViewer = lazy(async () => {
-  const module = await import('@file-viewer/react-full')
-  return { default: module.FileViewer }
-})
 
 type PreviewSource =
   | { kind: 'file'; file: File; name: string }
@@ -30,6 +25,8 @@ type PreviewSource =
 export type FilePreviewProps = {
   open: boolean
   theme: 'light' | 'dark'
+  /** 从正文文件卡片点开时直接预览这个地址 */
+  initial?: { url: string; name: string } | null
   onClose: () => void
 }
 
@@ -45,7 +42,7 @@ function formatSize(size: number): string {
   return `${(size / 1024 / 1024).toFixed(1)} MB`
 }
 
-export function FilePreview({ open, theme, onClose }: FilePreviewProps) {
+export function FilePreview({ open, theme, initial, onClose }: FilePreviewProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [source, setSource] = useState<PreviewSource | null>(null)
   const [urlDraft, setUrlDraft] = useState('')
@@ -62,6 +59,20 @@ export function FilePreview({ open, theme, onClose }: FilePreviewProps) {
     setLoading(false)
     setError(null)
   }, [open])
+
+  // 正文卡片点预览：直接用卡片里的地址打开
+  const initialUrl = initial?.url ?? ''
+  const initialName = initial?.name ?? ''
+  useEffect(() => {
+    if (!open || !initialUrl) return
+    setError(null)
+    setLoading(false)
+    setSource({
+      kind: 'url',
+      url: initialUrl,
+      name: initialName || decodeURIComponent(initialUrl.split('/').pop() || initialUrl),
+    })
+  }, [open, initialUrl, initialName])
 
   useEffect(() => {
     if (!open) return

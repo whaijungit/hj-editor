@@ -433,6 +433,39 @@
   color: var(--text);
 }
 
+/* ---------- 插入文件：右下角常驻入口 ---------- */
+.insert-file-fab {
+  position: fixed;
+  right: 18px;
+  bottom: calc(var(--statusbar-h) + 16px);
+  z-index: 55;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 13px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  box-shadow: var(--shadow);
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  opacity: 0.6;
+  backdrop-filter: blur(10px);
+  transition:
+    opacity 0.18s ease,
+    color 0.18s ease,
+    border-color 0.18s ease;
+}
+
+.insert-file-fab:hover,
+.insert-file-fab:focus-visible {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  color: var(--accent);
+  opacity: 1;
+}
+
 /* ---------- 主体 ---------- */
 .typora-body {
   display: flex;

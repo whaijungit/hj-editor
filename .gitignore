@@ -28,3 +28,6 @@ public/file-viewer
 
 # Local Netlify folder
 .netlify
+
+# 本地开发时 /api/file 落盘目录
+.local-files

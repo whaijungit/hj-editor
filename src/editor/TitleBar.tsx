@@ -8,11 +8,11 @@ import {
   Code2,
   Download,
   Eye,
-  FileSearch,
   FileText,
   Menu as MenuIcon,
   Moon,
   Palette,
+  Paperclip,
   PenLine,
   Pilcrow,
   Sun,
@@ -370,6 +370,10 @@ export function TitleBar({
           label: '分割线',
           run: () => chain().setHorizontalRule().run(),
         },
+        {
+          label: '插入文件…',
+          run: () => chain().insertFileUpload().run(),
+        },
         'separator',
         {
           label: '无序列表',
@@ -608,20 +612,20 @@ export function TitleBar({
         <button
           type="button"
           className="icon-btn"
-          aria-label="文件预览"
-          title="预览本地文件"
-          onClick={onOpenPreview}
-        >
-          <FileSearch size={17} />
-        </button>
-        <button
-          type="button"
-          className="icon-btn"
           aria-label="Markdown 源码"
           aria-pressed={sourceOpen}
           onClick={onToggleSource}
         >
           <Code2 size={17} />
+        </button>
+        <button
+          type="button"
+          className="icon-btn"
+          aria-label="插入文件"
+          title="插入文件到光标处"
+          onClick={() => editor.chain().focus().insertFileUpload().run()}
+        >
+          <Paperclip size={17} />
         </button>
         <button
           type="button"

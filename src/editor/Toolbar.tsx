@@ -29,6 +29,7 @@ import {
   ListTodo,
   Minus,
   Palette,
+  Paperclip,
   Quote,
   Redo2,
   Strikethrough,
@@ -835,6 +836,12 @@ export function EditorToolbar({ editor }: { editor: Editor }) {
         >
           {({ close }) => <ImagePanel editor={editor} close={close} />}
         </Menu>
+
+        <ToolButton
+          icon={<Paperclip size={16} />}
+          label="插入文件"
+          onClick={() => editor.chain().focus().insertFileUpload().run()}
+        />
 
         <Menu
           trigger={({ open, toggle }) => (

@@ -192,15 +192,20 @@ function showError(figure: HTMLElement, message: string) {
 }
 
 /**
- * 重建图表（改配置、切主题）时默认关闭入场动画：
- * 否则每次重建都要播一遍 1s 动画，看起来像图表在反复“加载”。
- * 用户在 option 里显式写了 animation 时按用户的来。
+ * 图表默认带入场动画：ECharts 自身默认也是开着的，这里显式给一组更柔和、稍慢的参数，
+ * 让文档里的图一出现就有动感。用户在 option 里写了 animation / animationDuration /
+ * animationEasing 时以用户的为准（展开顺序在 option 之后）。
  */
-function withoutEntranceAnimation(
+const DEFAULT_ANIMATION = {
+  animation: true,
+  animationDuration: 900,
+  animationEasing: 'cubicOut',
+}
+
+function withDefaultAnimation(
   option: Record<string, unknown>,
 ): Record<string, unknown> {
-  if ('animation' in option) return option
-  return { ...option, animation: false }
+  return { ...DEFAULT_ANIMATION, ...option }
 }
 
 async function paint(figure: HTMLElement, mount: HTMLElement, theme: ThemeName, code: string) {
@@ -223,7 +228,7 @@ async function paint(figure: HTMLElement, mount: HTMLElement, theme: ThemeName, 
     const chart = echarts.init(mount, theme === 'dark' ? 'dark' : undefined, {
       renderer: 'canvas',
     })
-    chart.setOption(withoutEntranceAnimation(source.option) as never)
+    chart.setOption(withDefaultAnimation(source.option) as never)
 
     const resize = new ResizeObserver(() => chart.resize())
     resize.observe(mount)
