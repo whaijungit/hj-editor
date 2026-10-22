@@ -3,6 +3,8 @@ import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
 import { ReplaceStep } from '@tiptap/pm/transform'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
+import { isEchartsLanguage } from './echarts'
+import { isMermaidLanguage } from './mermaid'
 
 /**
  * 启动打字演示：文档内容一开始就完整存在，只是把「还没敲到」的部分藏起来，
@@ -18,8 +20,19 @@ type RevealMeta = { type: 'set'; revealed: number } | { type: 'stop' }
 
 export const typingRevealKey = new PluginKey<TypingRevealState | null>('typingReveal')
 
+/**
+ * mermaid / echarts 图表块的源码由插件负责渲染成图，边打字边重绘会不停拆装图表，
+ * 所以它们整块跳过打字演示：一开始就完整显示，也不占演示的字数。
+ */
+function isDiagramBlock(node: ProseMirrorNode): boolean {
+  if (node.type.name !== 'codeBlock') return false
+  const language = node.attrs.language as string | null | undefined
+  return isMermaidLanguage(language) || isEchartsLanguage(language)
+}
+
 /** 一个字符算 1；块级节点进场再算 1（相当于按下回车）；图片 / 公式 / 分割线等原子节点算 1 */
 function unitCount(node: ProseMirrorNode): number {
+  if (isDiagramBlock(node)) return 0
   if (node.isText) return node.text?.length ?? 0
   if (node.isLeaf) return 1
   let total = 1
@@ -131,6 +144,9 @@ export function buildTypingLayout(
   }
 
   const walkBlock = (node: ProseMirrorNode, pos: number) => {
+    // 图表块不参与逐字演示：整块直接可见，光标也不在这一块停留
+    if (isDiagramBlock(node)) return
+
     if (typed >= revealed) {
       hideBlock(pos, pos + node.nodeSize)
       typed += unitCount(node)
