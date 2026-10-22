@@ -21,6 +21,25 @@ import { BlockMath, InlineMath } from './math'
 import { MermaidDiagram } from './mermaid'
 import { TypingPop, TypingReveal } from './typingReveal'
 
+/**
+ * 代码块多一个 `hideSource` 属性：给 ```echarts 块用——把源码收起来只留图表。
+ * 放节点属性而不是插件内存状态，是因为草稿按 HTML 快照存，属性会一起回来；
+ * Markdown 导出只写围栏语言，源码不会因为「隐藏」而丢。
+ */
+const CodeBlock = CodeBlockLowlight.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      hideSource: {
+        default: false,
+        parseHTML: (element) => element.getAttribute('data-hide-source') === 'true',
+        renderHTML: (attributes) =>
+          attributes.hideSource ? { 'data-hide-source': 'true' } : {},
+      },
+    }
+  },
+})
+
 export const editorExtensions = [
   StarterKit.configure({
     heading: { levels: [1, 2, 3, 4] },
@@ -34,7 +53,7 @@ export const editorExtensions = [
     },
     dropcursor: { color: '#5b5bd6', width: 2 },
   }),
-  CodeBlockLowlight.configure({
+  CodeBlock.configure({
     lowlight,
     defaultLanguage: DEFAULT_CODE_LANGUAGE,
     enableTabIndentation: true,

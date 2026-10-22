@@ -4,6 +4,13 @@ import { Plugin, PluginKey } from '@tiptap/pm/state'
 import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view'
 import type { Mermaid, MermaidConfig } from 'mermaid'
 import { observeViewport, stopObservingViewport } from './lazyRender'
+import {
+  buildSourceToggle,
+  hiddenSourceDecoration,
+  isSourceHidden,
+  revealedSourceAt,
+  toggleSourceKey,
+} from './sourceToggle'
 
 /** ```mermaid 与社区常用的简写 ```mmd 都当作图表块 */
 const MERMAID_LANGUAGES = new Set(['mermaid', 'mmd'])
@@ -12,9 +19,12 @@ type ThemeName = 'light' | 'dark'
 
 type RenderOutcome = { svg: string } | { error: string }
 
-type WidgetFactory = () => HTMLElement
+type WidgetFactory = (view: EditorView, getPos: () => number | undefined) => HTMLElement
 
-const pluginKey = new PluginKey<DecorationSet>('mermaidPreview')
+/** `revealed` 是「因为光标进来了而临时露出来的源码块」，其余按节点属性隐藏 */
+type MermaidState = { revealed: number | null; decorations: DecorationSet }
+
+const pluginKey = new PluginKey<MermaidState>('mermaidPreview')
 const CACHE_LIMIT = 80
 const RENDER_DELAY = 180
 
@@ -93,18 +103,34 @@ async function renderDiagram(code: string, theme: ThemeName): Promise<RenderOutc
   return outcome
 }
 
+/**
+ * 换掉图表内容，但留着右上角的「隐藏代码」开关——
+ * 之前直接 figure.innerHTML / replaceChildren 会连按钮一起冲掉。
+ */
+function setContent(figure: HTMLElement, nodes: Node[]) {
+  const toolbar = figure.querySelector('.code-source-toolbar')
+  figure.replaceChildren(...(toolbar ? [toolbar] : []), ...nodes)
+}
+
+function makeHint(text: string): HTMLElement {
+  const hint = document.createElement('span')
+  hint.className = 'mermaid-figure-hint'
+  hint.textContent = text
+  return hint
+}
+
 function paint(figure: HTMLElement, outcome: RenderOutcome) {
   figure.style.minHeight = ''
   if ('svg' in outcome) {
     figure.dataset.state = 'ready'
-    figure.innerHTML = outcome.svg
+    const holder = document.createElement('div')
+    holder.innerHTML = outcome.svg
+    // mermaid 可能返回 <style> + <svg>，整体搬进去
+    setContent(figure, Array.from(holder.childNodes))
     return
   }
   figure.dataset.state = 'error'
-  const hint = document.createElement('span')
-  hint.className = 'mermaid-figure-hint'
-  hint.textContent = `Mermaid 语法错误：${outcome.error}`
-  figure.replaceChildren(hint)
+  setContent(figure, [makeHint(`Mermaid 语法错误：${outcome.error}`)])
 }
 
 /** 滚出视口后丢掉 SVG，占位高度保留，滚回来直接从缓存恢复 */
@@ -119,7 +145,8 @@ function releaseDiagram(figure: HTMLElement) {
   const height = figure.offsetHeight
   if (height > 0) figure.style.minHeight = `${height}px`
   figure.dataset.state = 'idle'
-  figure.replaceChildren()
+  // 只留工具栏，SVG 丢掉
+  setContent(figure, [])
 }
 
 /** 进入视口时才渲染；同一张图滚动时可能被反复触发，这里按状态幂等 */
@@ -133,7 +160,7 @@ function mountDiagram(figure: HTMLElement, code: string, theme: ThemeName) {
   }
 
   figure.dataset.state = 'pending'
-  figure.innerHTML = '<span class="mermaid-figure-hint">图表渲染中…</span>'
+  setContent(figure, [makeHint('图表渲染中…')])
 
   // 进入视口后再略等一下，打字时不会每键重画
   window.setTimeout(() => {
@@ -146,11 +173,18 @@ function mountDiagram(figure: HTMLElement, code: string, theme: ThemeName) {
   }, RENDER_DELAY)
 }
 
-function buildFigure(code: string, theme: ThemeName): HTMLElement {
+function buildFigure(
+  view: EditorView,
+  getPos: () => number | undefined,
+  code: string,
+  theme: ThemeName,
+  hidden: boolean,
+): HTMLElement {
   const figure = document.createElement('div')
   figure.className = 'mermaid-figure'
   figure.contentEditable = 'false'
   figure.dataset.state = 'idle'
+  figure.appendChild(buildSourceToggle(view, getPos, hidden))
   // 空元素没有面积 IntersectionObserver 不好判断，先给一点占位高度
   figure.style.minHeight = '40px'
 
@@ -162,18 +196,18 @@ function buildFigure(code: string, theme: ThemeName): HTMLElement {
   return figure
 }
 
-function widgetFactory(code: string, theme: ThemeName): WidgetFactory {
-  const key = cacheKey(code, theme)
+function widgetFactory(code: string, theme: ThemeName, hidden: boolean): WidgetFactory {
+  const key = `${cacheKey(code, theme)}\u0000${hidden ? '1' : '0'}`
   let factory = widgetFactories.get(key)
   if (!factory) {
-    factory = () => buildFigure(code, theme)
+    factory = (view, getPos) => buildFigure(view, getPos, code, theme, hidden)
     widgetFactories.set(key, factory)
     trimCache(widgetFactories)
   }
   return factory
 }
 
-function buildDecorations(doc: ProseMirrorNode): DecorationSet {
+function buildDecorations(doc: ProseMirrorNode, revealed: number | null): DecorationSet {
   const decorations: Decoration[] = []
 
   doc.descendants((node, pos) => {
@@ -183,9 +217,15 @@ function buildDecorations(doc: ProseMirrorNode): DecorationSet {
     const code = node.textContent.trim()
     if (!code) return
 
+    const hidden = isSourceHidden(node)
+    // 收起源码的块用装饰加类隐藏，文档内容原样保留；光标进来时临时露出来
+    if (hidden && pos !== revealed) {
+      decorations.push(hiddenSourceDecoration(pos, node.nodeSize))
+    }
+
     // 图表贴在代码块下方，代码本身仍可编辑
     decorations.push(
-      Decoration.widget(pos + node.nodeSize, widgetFactory(code, currentTheme), {
+      Decoration.widget(pos + node.nodeSize, widgetFactory(code, currentTheme, hidden), {
         side: 1,
         // widget 被移除时停止视口观察
         destroy: stopObservingViewport,
@@ -201,21 +241,34 @@ export const MermaidDiagram = Extension.create({
 
   addProseMirrorPlugins() {
     return [
-      new Plugin<DecorationSet>({
+      new Plugin<MermaidState>({
         key: pluginKey,
         state: {
-          init: (_config, state) => buildDecorations(state.doc),
+          init: (_config, state) => {
+            const revealed = revealedSourceAt(state, isMermaidLanguage)
+            return { revealed, decorations: buildDecorations(state.doc, revealed) }
+          },
           /**
-           * 只在文档真正变化或主题切换时重算装饰。
+           * 只在文档真正变化、主题切换、切换「隐藏源码」，
+           * 或光标进出被隐藏的块时重算装饰。
            * 原来每个事务（含光标移动）都全量遍历文档，长文档输入会被这里拖慢。
            */
-          apply: (tr, value, _oldState, newState) =>
-            tr.docChanged || tr.getMeta(pluginKey)
-              ? buildDecorations(newState.doc)
-              : value,
+          apply: (tr, value, _oldState, newState) => {
+            const revealed = revealedSourceAt(newState, isMermaidLanguage)
+            if (
+              tr.docChanged ||
+              tr.getMeta(pluginKey) ||
+              tr.getMeta(toggleSourceKey) ||
+              revealed !== value.revealed
+            ) {
+              return { revealed, decorations: buildDecorations(newState.doc, revealed) }
+            }
+            return value
+          },
         },
         props: {
-          decorations: (state) => pluginKey.getState(state) ?? DecorationSet.empty,
+          decorations: (state) =>
+            pluginKey.getState(state)?.decorations ?? DecorationSet.empty,
         },
         view: (editorView: EditorView) => {
           redraw = () => {

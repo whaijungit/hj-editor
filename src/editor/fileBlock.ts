@@ -206,6 +206,8 @@ export const FileBlock = Node.create({
       parts.root.addEventListener('dblclick', openPreview)
 
       parts.remove.addEventListener('click', () => {
+        // 只读分享里不给删附件
+        if (!editor.isEditable) return
         const pos = typeof getPos === 'function' ? getPos() : undefined
         if (typeof pos !== 'number') return
         editor

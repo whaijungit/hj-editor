@@ -64,6 +64,8 @@ export type TitleBarProps = {
   onCopyMarkdown: () => void
   onShare: () => void
   onShowHelp: (tab: 'syntax' | 'shortcuts') => void
+  /** 只读分享：写入类入口（新建/导入/保存/分享/排版格式）全部置灰 */
+  readOnly?: boolean
 }
 
 type MenuGroup = { label: string; icon: LucideIcon; items: MenuItem[] }
@@ -238,6 +240,7 @@ export function TitleBar({
   onCopyMarkdown,
   onShare,
   onShowHelp,
+  readOnly = false,
 }: TitleBarProps) {
   const [openMenu, setOpenMenu] = useState<string | null>(null)
   const isMobile = useIsMobile()
@@ -287,11 +290,19 @@ export function TitleBar({
 
   const chain = () => editor.chain().focus()
 
+  /** 只读分享里，文件 / 编辑 / 段落 / 格式 一律置灰；视图和帮助照旧可用 */
+  const lockEntries = (items: MenuItem[]): MenuItem[] =>
+    readOnly
+      ? items.map((item) =>
+          item === 'separator' ? item : { ...item, disabled: true },
+        )
+      : items
+
   const menus: { label: string; icon: LucideIcon; items: MenuItem[] }[] = [
     {
       label: '文件',
       icon: FileText,
-      items: [
+      items: lockEntries([
         { label: '新建文稿', shortcut: 'Ctrl N', run: onNew },
         { label: '导入文件…', shortcut: 'Ctrl O', run: onImport },
         { label: '预览文件…', run: onOpenPreview },
@@ -302,12 +313,12 @@ export function TitleBar({
         { label: '复制 Markdown', run: onCopyMarkdown },
         'separator',
         { label: '分享链接…', run: onShare },
-      ],
+      ]),
     },
     {
       label: '编辑',
       icon: PenLine,
-      items: [
+      items: lockEntries([
         {
           label: '撤销',
           shortcut: 'Ctrl Z',
@@ -332,12 +343,12 @@ export function TitleBar({
           label: '清除格式',
           run: () => chain().unsetAllMarks().clearNodes().run(),
         },
-      ],
+      ]),
     },
     {
       label: '段落',
       icon: Pilcrow,
-      items: [
+      items: lockEntries([
         {
           label: '正文',
           shortcut: 'Ctrl Alt 0',
@@ -401,12 +412,12 @@ export function TitleBar({
               .insertTable({ rows: 3, cols: 3, withHeaderRow: true })
               .run(),
         },
-      ],
+      ]),
     },
     {
       label: '格式',
       icon: Type,
-      items: [
+      items: lockEntries([
         {
           label: '加粗',
           shortcut: 'Ctrl B',
@@ -450,7 +461,7 @@ export function TitleBar({
           label: '清除格式',
           run: () => chain().unsetAllMarks().run(),
         },
-      ],
+      ]),
     },
     {
       label: '视图',
@@ -589,7 +600,9 @@ export function TitleBar({
         <input
           className="doc-title"
           value={title}
+          readOnly={readOnly}
           aria-label="文档标题"
+          title={readOnly ? '分享文稿，标题不可修改' : '点击修改文档标题'}
           spellCheck={false}
           onChange={(event) => onTitleChange(event.target.value)}
           onKeyDown={(event) => {
@@ -599,7 +612,7 @@ export function TitleBar({
       </div>
 
       <div className="titlebar-end">
-        <span className="save-hint">自动保存</span>
+        <span className="save-hint">{readOnly ? '只读分享' : '自动保存'}</span>
         <button
           type="button"
           className="icon-btn"
@@ -618,15 +631,17 @@ export function TitleBar({
         >
           <Code2 size={17} />
         </button>
-        <button
-          type="button"
-          className="icon-btn"
-          aria-label="插入文件"
-          title="插入文件到光标处"
-          onClick={() => editor.chain().focus().insertFileUpload().run()}
-        >
-          <Paperclip size={17} />
-        </button>
+        {!readOnly && (
+          <button
+            type="button"
+            className="icon-btn"
+            aria-label="插入文件"
+            title="插入文件到光标处"
+            onClick={() => editor.chain().focus().insertFileUpload().run()}
+          >
+            <Paperclip size={17} />
+          </button>
+        )}
         <button
           type="button"
           className="icon-btn"
@@ -645,14 +660,16 @@ export function TitleBar({
         >
           {theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
         </button>
-        <button
-          type="button"
-          className="icon-btn"
-          aria-label="导出 Markdown"
-          onClick={onExportMarkdown}
-        >
-          <Download size={17} />
-        </button>
+        {!readOnly && (
+          <button
+            type="button"
+            className="icon-btn"
+            aria-label="导出 Markdown"
+            onClick={onExportMarkdown}
+          >
+            <Download size={17} />
+          </button>
+        )}
       </div>
     </header>
   )

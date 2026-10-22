@@ -260,10 +260,17 @@ export const FileUploadBlock = Node.create({
         ])
       }
 
-      pick.addEventListener('click', () => fileInput.click())
+      // 只读分享里这个占位块不该还能选文件或删掉自己
+      pick.addEventListener('click', () => {
+        if (editor.isEditable) fileInput.click()
+      })
       // 点文字区域也能选文件；点边框则只是选中这个块
-      copy.addEventListener('click', () => fileInput.click())
-      close.addEventListener('click', removeSelf)
+      copy.addEventListener('click', () => {
+        if (editor.isEditable) fileInput.click()
+      })
+      close.addEventListener('click', () => {
+        if (editor.isEditable) removeSelf()
+      })
       fileInput.addEventListener('change', () => {
         const picked = Array.from(fileInput.files ?? [])
         fileInput.value = ''

@@ -565,6 +565,7 @@
 
 /* ```mermaid 代码块下方渲染出的图表 */
 .mermaid-figure {
+  position: relative;
   display: flex;
   justify-content: center;
   margin: -0.3em 0 1.4em;
@@ -630,6 +631,62 @@
 
 .echarts-figure[data-state='error'] .echarts-hint {
   color: #d14343;
+}
+
+/* 收起源码的图表块（echarts / mermaid）：正文里只留图表，
+   Markdown 导出、复制出去的 HTML 里代码照旧完整 */
+.tiptap-content pre.is-code-source-hidden,
+.writer-page .tiptap-content pre.is-code-source-hidden {
+  display: none;
+}
+
+/* 图表右上角：隐藏 / 显示这段源码的开关。
+   z-index 不能省：ECharts 会把挂载容器变成定位元素，不吃 z-index 的话画布会盖住按钮 */
+.code-source-toolbar {
+  position: absolute;
+  z-index: 3;
+  top: 6px;
+  right: 8px;
+  display: flex;
+  gap: 6px;
+  opacity: 0.45;
+  transition: opacity 0.15s ease;
+}
+
+.echarts-figure:hover .code-source-toolbar,
+.mermaid-figure:hover .code-source-toolbar,
+.echarts-figure:focus-within .code-source-toolbar,
+.mermaid-figure:focus-within .code-source-toolbar {
+  opacity: 1;
+}
+
+.code-source-toggle {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 9px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-muted);
+  color: var(--text-tertiary);
+  font-family: inherit;
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.code-source-toggle:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-muted-strong);
+  color: var(--text-secondary);
+}
+
+.code-source-toggle[data-hidden='true'] {
+  color: var(--text-secondary);
 }
 
 /* 代码块右上角的操作区：复制 + 语言徽标 */

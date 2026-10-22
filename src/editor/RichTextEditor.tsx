@@ -141,7 +141,10 @@ export function RichTextEditor() {
   const [shareUrl, setShareUrl] = useState('')
   const [shareError, setShareError] = useState<string | null>(null)
   const [sharedReadonly, setSharedReadonly] = useState(false)
-  const [sharedLoading, setSharedLoading] = useState(false)
+  // 带 ?doc= 进来时一开始就是加载态：先别把编辑入口亮出来
+  const [sharedLoading, setSharedLoading] = useState(
+    () => sharedDocIdFromUrl() !== null,
+  )
 
   const editorRef = useRef<Editor | null>(null)
   const titleRef = useRef(title)
@@ -274,12 +277,18 @@ export function RichTextEditor() {
     extensions: editorExtensions,
     // 分享模式先留空，等接口返回直接铺内容，避免自己的草稿闪一下
     content: sharedIdRef.current ? '<p></p>' : (draft?.html ?? initialContent),
+    // 一进来就锁住：内容还没到的空档也不该让人打进去
+    editable: !sharedIdRef.current,
     editorProps: {
       attributes: {
         class: 'tiptap-content',
         spellcheck: 'false',
       },
       handlePaste: (_view, event) => {
+        if (sharedReadonlyRef.current) {
+          event.preventDefault()
+          return true
+        }
         const clipboard = event.clipboardData
         if (!clipboard) return false
 
@@ -340,6 +349,10 @@ export function RichTextEditor() {
         return true
       },
       handleDrop: (view, event) => {
+        if (sharedReadonlyRef.current) {
+          event.preventDefault()
+          return true
+        }
         const files = Array.from(event.dataTransfer?.files ?? [])
         if (!files.length) return false
 
@@ -374,6 +387,20 @@ export function RichTextEditor() {
       handleKeyDown: (_view, event) => {
         const mod = event.metaKey || event.ctrlKey
         if (!mod) return false
+
+        // 只读分享里只留「源码」这类查看操作，保存 / 导入一律不响应
+        if (sharedReadonlyRef.current) {
+          if (event.key === '/') {
+            event.preventDefault()
+            setSourceOpen((value) => !value)
+            return true
+          }
+          if (['s', 'o'].includes(event.key.toLowerCase())) {
+            event.preventDefault()
+            return true
+          }
+          return false
+        }
 
         if (event.key.toLowerCase() === 's') {
           event.preventDefault()
@@ -469,6 +496,8 @@ export function RichTextEditor() {
         if (!alive) return
         const target = editorRef.current
         if (target && stored) {
+          // 已经退回本地文稿，编辑能力要跟着恢复
+          target.setEditable(true)
           target.commands.setContent(stored.html, { emitUpdate: false })
           setTitle(stored.title)
         }
@@ -977,11 +1006,16 @@ export function RichTextEditor() {
 
   if (!editor) return null
 
+  // 只读分享：只保留阅读与查看类操作，写入类入口统一由这个开关收掉。
+  // 加载期间也算只读，免得内容还没到就能点「新建文稿」把状态搅乱
+  const readOnly = sharedReadonly || sharedLoading
+
   return (
     <div
       className="typora-app"
       data-hide-titlebar={titleBarHidden || isMobile}
       data-hide-statusbar={statusBarHidden}
+      data-readonly={readOnly}
     >
       {(!titleBarHidden || isMobile) && (
         <TitleBar
@@ -1018,6 +1052,7 @@ export function RichTextEditor() {
           onCopyMarkdown={copyMarkdown}
           onShare={openShare}
           onShowHelp={showHelp}
+          readOnly={readOnly}
         />
       )}
 
@@ -1051,7 +1086,7 @@ export function RichTextEditor() {
             data-typewriter-mode={typewriterMode}
           >
             <EditorContent editor={editor} />
-            <CodeBlockLanguage editor={editor} />
+            <CodeBlockLanguage editor={editor} readOnly={readOnly} />
             <TableToolbar editor={editor} hidden={laserActive} />
             <DocResizer onResize={setDocWidth} onCommit={saveDocWidth} />
           </div>
@@ -1071,18 +1106,20 @@ export function RichTextEditor() {
         />
       )}
 
-      <BubbleMenu
-        editor={editor}
-        className="bubble-menu-shell"
-        options={{ strategy: 'fixed', placement: 'top', offset: 10 }}
-      >
-        <BubbleToolbar editor={editor} />
-      </BubbleMenu>
+      {!readOnly && (
+        <BubbleMenu
+          editor={editor}
+          className="bubble-menu-shell"
+          options={{ strategy: 'fixed', placement: 'top', offset: 10 }}
+        >
+          <BubbleToolbar editor={editor} />
+        </BubbleMenu>
+      )}
 
       <LaserPointer active={laserActive} onExit={closeLaser} />
 
       {/* 标题栏默认隐藏，所以插入文件留一个常驻入口 */}
-      {!typingDemo && !laserActive && !sourceOpen && !focusMode && (
+      {!readOnly && !typingDemo && !laserActive && !sourceOpen && !focusMode && (
         <button
           type="button"
           className="insert-file-fab"
@@ -1119,15 +1156,17 @@ export function RichTextEditor() {
               状态栏
             </button>
           )}
-          <button
-            type="button"
-            title="分享文稿"
-            aria-label="分享文稿"
-            onClick={openShare}
-          >
-            <Link2 size={14} />
-            分享
-          </button>
+          {!readOnly && (
+            <button
+              type="button"
+              title="分享文稿"
+              aria-label="分享文稿"
+              onClick={openShare}
+            >
+              <Link2 size={14} />
+              分享
+            </button>
+          )}
         </div>
       )}
 

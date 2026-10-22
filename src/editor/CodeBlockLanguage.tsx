@@ -76,7 +76,14 @@ function sameInfo(a: CodeBlockInfo | null, b: CodeBlockInfo | null) {
 }
 
 /** 代码块右上角的语言徽标，点击可在常用语言之间切换 */
-export function CodeBlockLanguage({ editor }: { editor: Editor }) {
+export function CodeBlockLanguage({
+  editor,
+  readOnly = false,
+}: {
+  editor: Editor
+  /** 只读分享里不提供改语言（那会写进文档），只留复制和折叠 */
+  readOnly?: boolean
+}) {
   const [info, setInfo] = useState<CodeBlockInfo | null>(null)
   const [open, setOpen] = useState(false)
   const [copyState, setCopyState] = useState<'idle' | 'done' | 'fail'>('idle')
@@ -242,22 +249,24 @@ export function CodeBlockLanguage({ editor }: { editor: Editor }) {
           </span>
         </button>
 
-        <button
-          ref={badgeRef}
-          type="button"
-          className="code-lang-badge"
-          aria-haspopup="listbox"
-          aria-expanded={open}
-          title="切换代码语言"
-          onMouseDown={(event) => event.preventDefault()}
-          onClick={() => setOpen((value) => !value)}
-        >
-          {codeLanguageLabel(info.language)}
-          <ChevronDown size={11} />
-        </button>
+        {!readOnly && (
+          <button
+            ref={badgeRef}
+            type="button"
+            className="code-lang-badge"
+            aria-haspopup="listbox"
+            aria-expanded={open}
+            title="切换代码语言"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => setOpen((value) => !value)}
+          >
+            {codeLanguageLabel(info.language)}
+            <ChevronDown size={11} />
+          </button>
+        )}
       </div>
 
-      {open &&
+      {open && !readOnly &&
         createPortal(
           <div
             ref={panelRef}

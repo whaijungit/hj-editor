@@ -4,6 +4,13 @@ import { Plugin, PluginKey } from '@tiptap/pm/state'
 import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view'
 import type { EChartsType } from 'echarts/core'
 import { observeViewport, stopObservingViewport } from './lazyRender'
+import {
+  buildSourceToggle,
+  hiddenSourceDecoration,
+  isSourceHidden,
+  revealedSourceAt,
+  toggleSourceKey,
+} from './sourceToggle'
 
 /** ```echarts / ```chart 都当作图表块 */
 const ECHARTS_LANGUAGES = new Set(['echarts', 'echart', 'chart'])
@@ -21,14 +28,20 @@ const CACHE_LIMIT = 60
 /** 编辑图表代码后等停手再重画，避免每次按键都重播动画 */
 const REBUILD_DELAY = 320
 
-const pluginKey = new PluginKey<DecorationSet>('echartsPreview')
+/** `revealed` 是「因为光标进来了而临时露出来的源码块」，其余按节点属性隐藏 */
+type ChartState = { revealed: number | null; decorations: DecorationSet }
+
+const pluginKey = new PluginKey<ChartState>('echartsPreview')
 const redrawKey = 'echarts-redraw'
+
+type WidgetFactory = (view: EditorView, getPos: () => number | undefined) => HTMLElement
 
 /**
  * widget 工厂缓存：prosemirror 用工厂函数的引用判断 widget 是否变化，
  * 缓存住之后，光标移动、无关段落的编辑都不会让图表重建重画。
+ * key 里带上「是否隐藏源码」，切换开关时才会换成新的 widget（按钮文案跟着变）。
  */
-const widgetFactories = new Map<string, () => HTMLElement>()
+const widgetFactories = new Map<string, WidgetFactory>()
 /** 每个挂载点上的图表实例和它的尺寸监听，释放时一起收掉 */
 const liveCharts = new Map<HTMLElement, { chart: EChartsType; resize: ResizeObserver }>()
 
@@ -184,7 +197,9 @@ function makeHint(figure: HTMLElement, text: string): HTMLElement {
 
 function showError(figure: HTMLElement, message: string) {
   figure.dataset.state = 'error'
-  figure.replaceChildren()
+  // 不动工具栏：报错时也得留一个「显示代码」的入口
+  figure.querySelector('.echarts-mount')?.remove()
+  figure.querySelector('.echarts-hint')?.remove()
   const hint = document.createElement('span')
   hint.className = 'echarts-hint'
   hint.textContent = `ECharts 配置错误：${message}`
@@ -262,11 +277,18 @@ function releaseFigure(figure: HTMLElement, mount: HTMLElement) {
   mount.replaceChildren()
 }
 
-function buildFigure(code: string, theme: ThemeName): HTMLElement {
+function buildFigure(
+  view: EditorView,
+  getPos: () => number | undefined,
+  code: string,
+  theme: ThemeName,
+  hidden: boolean,
+): HTMLElement {
   const figure = document.createElement('div')
   figure.className = 'echarts-figure'
   figure.contentEditable = 'false'
   figure.dataset.state = 'pending'
+  figure.appendChild(buildSourceToggle(view, getPos, hidden))
 
   if (!code.trim()) {
     showError(figure, '图表配置为空，写一段 ECharts 的 option（JSON 或 JS 都行）')
@@ -288,11 +310,11 @@ function buildFigure(code: string, theme: ThemeName): HTMLElement {
   return figure
 }
 
-function widgetFactory(code: string, theme: ThemeName): () => HTMLElement {
-  const key = `${theme}\u0000${code}`
+function widgetFactory(code: string, theme: ThemeName, hidden: boolean): WidgetFactory {
+  const key = `${theme}\u0000${hidden ? '1' : '0'}\u0000${code}`
   let factory = widgetFactories.get(key)
   if (!factory) {
-    factory = () => buildFigure(code, theme)
+    factory = (view, getPos) => buildFigure(view, getPos, code, theme, hidden)
     widgetFactories.set(key, factory)
     trimCache(widgetFactories)
   }
@@ -325,7 +347,7 @@ function scheduleRebuild() {
   }, REBUILD_DELAY)
 }
 
-function buildDecorations(doc: ProseMirrorNode): DecorationSet {
+function buildDecorations(doc: ProseMirrorNode, revealed: number | null): DecorationSet {
   pruneCharts()
   const decorations: Decoration[] = []
 
@@ -336,9 +358,15 @@ function buildDecorations(doc: ProseMirrorNode): DecorationSet {
     const code = node.textContent.trim()
     if (!code) return
 
+    const hidden = isSourceHidden(node)
+    // 收起源码的块用装饰加类隐藏，文档内容原样保留；光标进来时临时露出来
+    if (hidden && pos !== revealed) {
+      decorations.push(hiddenSourceDecoration(pos, node.nodeSize))
+    }
+
     // 图表贴在代码块下方，代码本身仍可编辑
     decorations.push(
-      Decoration.widget(pos + node.nodeSize, widgetFactory(code, currentTheme), {
+      Decoration.widget(pos + node.nodeSize, widgetFactory(code, currentTheme, hidden), {
         side: 1,
         // widget 被移除时停止视口观察，别让 observer 一直攥着已销毁的 DOM
         destroy: stopObservingViewport,
@@ -354,28 +382,38 @@ export const EchartsDiagram = Extension.create({
 
   addProseMirrorPlugins() {
     return [
-      new Plugin<DecorationSet>({
+      new Plugin<ChartState>({
         key: pluginKey,
         state: {
-          init: (_config, state) => buildDecorations(state.doc),
+          init: (_config, state) => {
+            const revealed = revealedSourceAt(state, isEchartsLanguage)
+            return { revealed, decorations: buildDecorations(state.doc, revealed) }
+          },
           /**
-           * 只在文档真正变化或主题切换时重算装饰。
+           * 只在文档真正变化、主题切换、切换「隐藏源码」，
+           * 或光标进出被隐藏的块时重算装饰。
            * 原实现每次事务（含光标移动）都全量遍历文档，长文档输入会明显变卡。
            */
           apply: (tr, value, _oldState, newState) => {
-            if (tr.getMeta(redrawKey)) {
-              return buildDecorations(newState.doc)
+            const revealed = revealedSourceAt(newState, isEchartsLanguage)
+            if (
+              tr.getMeta(redrawKey) ||
+              tr.getMeta(toggleSourceKey) ||
+              revealed !== value.revealed
+            ) {
+              return { revealed, decorations: buildDecorations(newState.doc, revealed) }
             }
             if (tr.docChanged) {
               // 旧图表跟着位置映射走，内容变化等防抖结束后再重建
               scheduleRebuild()
-              return value.map(tr.mapping, tr.doc)
+              return { revealed, decorations: value.decorations.map(tr.mapping, tr.doc) }
             }
             return value
           },
         },
         props: {
-          decorations: (state) => pluginKey.getState(state) ?? DecorationSet.empty,
+          decorations: (state) =>
+            pluginKey.getState(state)?.decorations ?? DecorationSet.empty,
         },
         view: (view) => {
           redrawView = view

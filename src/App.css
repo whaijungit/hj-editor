@@ -1159,6 +1159,24 @@ body[data-resizing='true'] {
   color: #fff;
 }
 
+/* ---------- 只读分享 ---------- */
+/* 标题退成纯展示，会改动文档的按钮一律收起 */
+.typora-app[data-readonly='true'] .doc-title,
+.typora-app[data-readonly='true'] .doc-title:hover {
+  background: transparent;
+  cursor: default;
+}
+
+.typora-app[data-readonly='true'] .save-hint {
+  color: var(--accent-strong);
+}
+
+.typora-app[data-readonly='true'] .file-block-btn[data-act='remove'],
+.typora-app[data-readonly='true'] .file-upload-pick,
+.typora-app[data-readonly='true'] .file-upload-close {
+  display: none;
+}
+
 /* ---------- 主题设置 ---------- */
 .theme-dialog {
   width: min(600px, 100%);
