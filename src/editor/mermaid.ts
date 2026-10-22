@@ -240,12 +240,17 @@ export const MermaidDiagram = Extension.create({
   name: 'mermaidDiagram',
 
   addProseMirrorPlugins() {
+    const { editor } = this
+    // 只读（分享页）不做「光标进块就临时露源码」：看的人不编辑，
+    // 露出来只会把源码直接摊在读者面前，图表反而被顶下去
+    const canRevealSource = () => editor.isEditable !== false
+
     return [
       new Plugin<MermaidState>({
         key: pluginKey,
         state: {
           init: (_config, state) => {
-            const revealed = revealedSourceAt(state, isMermaidLanguage)
+            const revealed = revealedSourceAt(state, isMermaidLanguage, canRevealSource())
             return { revealed, decorations: buildDecorations(state.doc, revealed) }
           },
           /**
@@ -254,7 +259,7 @@ export const MermaidDiagram = Extension.create({
            * 原来每个事务（含光标移动）都全量遍历文档，长文档输入会被这里拖慢。
            */
           apply: (tr, value, _oldState, newState) => {
-            const revealed = revealedSourceAt(newState, isMermaidLanguage)
+            const revealed = revealedSourceAt(newState, isMermaidLanguage, canRevealSource())
             if (
               tr.docChanged ||
               tr.getMeta(pluginKey) ||

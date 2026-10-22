@@ -22,11 +22,14 @@ export function isSourceHidden(node: ProseMirrorNode): boolean {
 /**
  * 光标停在被隐藏的图表块里时，把源码临时露出来——
  * 否则在看不见的地方打字，看着像「打不出字」。
+ * 只读（分享页）不该走这条：看的人不编辑，源码露出来就只是把源码展示给读者。
  */
 export function revealedSourceAt(
   state: EditorState,
   matches: DiagramLanguageMatcher,
+  allowReveal = true,
 ): number | null {
+  if (!allowReveal) return null
   const $from = state.doc.resolve(state.selection.from)
   for (let depth = $from.depth; depth > 0; depth--) {
     const node = $from.node(depth)

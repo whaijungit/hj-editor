@@ -689,6 +689,23 @@
   color: var(--text-secondary);
 }
 
+/* 分享页是只读的，看的人不一定会在图表上悬停：开关直接常显并加深，
+   否则 0.45 的淡字几乎看不见，源码看起来就像「打不开」 */
+.typora-app[data-readonly='true'] .code-source-toolbar {
+  opacity: 1;
+}
+
+.typora-app[data-readonly='true'] .code-source-toggle {
+  border-color: var(--border-strong);
+  background: var(--surface);
+  color: var(--text-secondary);
+  box-shadow: 0 1px 6px rgba(20, 20, 40, 0.14);
+}
+
+.typora-app[data-readonly='true'] .code-source-toggle[data-hidden='true'] {
+  color: var(--text);
+}
+
 /* 代码块右上角的操作区：复制 + 语言徽标 */
 .code-block-tools {
   position: fixed;
