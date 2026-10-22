@@ -29,7 +29,6 @@ import {
   ListTodo,
   Minus,
   Palette,
-  Paperclip,
   Quote,
   Redo2,
   Strikethrough,
@@ -46,6 +45,7 @@ import {
   Undo2,
   Upload,
 } from 'lucide-react'
+import { insertCodeBlock, insertRule, insertTable } from './insertCommands'
 
 const TEXT_COLORS = [
   '#1f2430',
@@ -491,15 +491,7 @@ function TablePanel({ editor, close }: { editor: Editor; close: () => void }) {
       <button
         type="button"
         className="tb-item"
-        onClick={() =>
-          run(() =>
-            editor
-              .chain()
-              .focus()
-              .insertTable({ rows: 3, cols: 3, withHeaderRow: true })
-              .run(),
-          )
-        }
+        onClick={() => run(() => insertTable(editor))}
       >
         <Table2 size={14} />
         插入 3 × 3 表格
@@ -784,12 +776,12 @@ export function EditorToolbar({ editor }: { editor: Editor }) {
           icon={<CodeXml size={16} />}
           label="代码块"
           active={state.isCodeBlock}
-          onClick={() => editor.chain().focus().toggleCodeBlock().run()}
+          onClick={() => insertCodeBlock(editor)}
         />
         <ToolButton
           icon={<Minus size={16} />}
           label="分割线"
-          onClick={() => editor.chain().focus().setHorizontalRule().run()}
+          onClick={() => insertRule(editor)}
         />
       </div>
 
@@ -837,12 +829,6 @@ export function EditorToolbar({ editor }: { editor: Editor }) {
           {({ close }) => <ImagePanel editor={editor} close={close} />}
         </Menu>
 
-        <ToolButton
-          icon={<Paperclip size={16} />}
-          label="插入文件"
-          onClick={() => editor.chain().focus().insertFileUpload().run()}
-        />
-
         <Menu
           trigger={({ open, toggle }) => (
             <button
@@ -875,57 +861,4 @@ export function EditorToolbar({ editor }: { editor: Editor }) {
   )
 }
 
-export function BubbleToolbar({ editor }: { editor: Editor }) {
-  const state = useEditorState({ editor, selector: selectToolbarState })
 
-  return (
-    <div className="bubble-menu">
-      <ToolButton
-        icon={<Bold size={15} />}
-        label="加粗"
-        active={state.isBold}
-        onClick={() => editor.chain().focus().toggleBold().run()}
-      />
-      <ToolButton
-        icon={<Italic size={15} />}
-        label="斜体"
-        active={state.isItalic}
-        onClick={() => editor.chain().focus().toggleItalic().run()}
-      />
-      <ToolButton
-        icon={<Underline size={15} />}
-        label="下划线"
-        active={state.isUnderline}
-        onClick={() => editor.chain().focus().toggleUnderline().run()}
-      />
-      <ToolButton
-        icon={<Strikethrough size={15} />}
-        label="删除线"
-        active={state.isStrike}
-        onClick={() => editor.chain().focus().toggleStrike().run()}
-      />
-      <span className="bubble-sep" />
-      <ToolButton
-        icon={<Code size={15} />}
-        label="行内代码"
-        active={state.isCode}
-        onClick={() => editor.chain().focus().toggleCode().run()}
-      />
-      <ToolButton
-        icon={<Highlighter size={15} />}
-        label="高亮"
-        active={state.highlight !== null}
-        onClick={() =>
-          state.highlight
-            ? editor.chain().focus().unsetHighlight().run()
-            : editor.chain().focus().setHighlight({ color: '#fef08a' }).run()
-        }
-      />
-      <ToolButton
-        icon={<Eraser size={15} />}
-        label="清除格式"
-        onClick={() => editor.chain().focus().unsetAllMarks().run()}
-      />
-    </div>
-  )
-}

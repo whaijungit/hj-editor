@@ -2,7 +2,7 @@ import type { LaserTool } from './laserConfig'
 
 const STORAGE_KEY = 'hj-editor:laser-shortcuts'
 
-const MODIFIER_KEYS = new Set(['Shift', 'Control', 'Alt', 'Meta', 'CapsLock', 'Dead'])
+export { eventToKey, formatKey } from './keys'
 
 export type LaserActionId =
   | 'exit'
@@ -38,20 +38,6 @@ export const LASER_SHORTCUTS: LaserShortcutDef[] = [
 
 export type LaserKeyMap = Record<LaserActionId, string>
 
-const CODE_KEYS: Record<string, string> = {
-  Slash: '/',
-  Backslash: '\\',
-  Equal: '=',
-  Minus: '-',
-  Comma: ',',
-  Period: '.',
-  Semicolon: ';',
-  Quote: "'",
-  BracketLeft: '[',
-  BracketRight: ']',
-  Backquote: '`',
-}
-
 export function defaultLaserKeys(): LaserKeyMap {
   const map = {} as LaserKeyMap
   LASER_SHORTCUTS.forEach((item) => {
@@ -82,58 +68,6 @@ export function saveLaserKeys(keys: LaserKeyMap) {
   } catch {
     // 忽略隐私模式下的写入失败
   }
-}
-
-function isMac() {
-  return /Mac|iPhone|iPad/i.test(window.navigator.userAgent)
-}
-
-function codeToKey(code: string): string | null {
-  if (/^Digit\d$/.test(code)) return code.slice(5)
-  if (/^Key[A-Z]$/.test(code)) return code.slice(3).toLowerCase()
-  return CODE_KEYS[code] ?? null
-}
-
-/**
- * 把键盘事件转成稳定的键位字符串，例如 `mod+shift+l`、`escape`。
- * Shift 与数字/符号组合会回退到物理键位，避免 `!`、`@` 之类的字符差异。
- */
-export function eventToKey(event: KeyboardEvent): string | null {
-  if (MODIFIER_KEYS.has(event.key)) return null
-
-  const parts: string[] = []
-  if (event.metaKey || event.ctrlKey) parts.push('mod')
-  if (event.altKey) parts.push('alt')
-  if (event.shiftKey) parts.push('shift')
-
-  let main = event.key.toLowerCase()
-  if (event.key.length === 1 && event.shiftKey && !/^[a-z]$/i.test(event.key)) {
-    main = codeToKey(event.code) ?? main
-  } else if (event.key === ' ') {
-    main = 'space'
-  }
-  parts.push(main)
-  return parts.join('+')
-}
-
-export function formatKey(combo: string): string {
-  if (!combo) return '未设置'
-  const mac = isMac()
-  const parts = combo.split('+').map((part) => {
-    if (part === 'mod') return mac ? '⌘' : 'Ctrl'
-    if (part === 'shift') return mac ? '⇧' : 'Shift'
-    if (part === 'alt') return mac ? '⌥' : 'Alt'
-    if (part === 'escape') return 'Esc'
-    if (part === 'space') return 'Space'
-    if (part === 'backspace') return 'Backspace'
-    if (part === 'delete') return 'Del'
-    if (part === 'arrowup') return '↑'
-    if (part === 'arrowdown') return '↓'
-    if (part === 'arrowleft') return '←'
-    if (part === 'arrowright') return '→'
-    return part.length === 1 ? part.toUpperCase() : part
-  })
-  return mac ? parts.join('') : parts.join('+')
 }
 
 export function resolveLaserAction(keys: LaserKeyMap, combo: string): LaserActionId | null {

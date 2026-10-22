@@ -33,6 +33,14 @@ pnpm build
 pnpm preview
 ```
 
+## 保存到服务器（Netlify）
+
+- 侧栏的「保存到云端」按钮 / `Ctrl Shift S`：第一次保存会在云端新建一篇并把访问链接复制到剪贴板，之后每次保存都覆盖同一篇，链接保持不变。侧栏顶部会显示最近一次同步的时间。
+- 文稿存在 **Netlify Blobs**（store `shared-docs`），接口在 `netlify/functions/doc.ts`：
+  「POST /api/doc」新建、「PUT /api/doc?id=…」覆盖、「GET /api/doc?id=…」读取；分享链接读的就是同一份内容。
+- 本地必须有服务端才能保存：`pnpm exec netlify dev`（只跑 `pnpm dev` 时只有前端，`/api/doc` 不可用）。
+- 部署：把仓库连到 Netlify，或执行 `pnpm exec netlify deploy --prod`。`netlify.toml` 已配好 `pnpm build` / `dist` / `netlify/functions`。
+
 ## 目录结构
 
 ```

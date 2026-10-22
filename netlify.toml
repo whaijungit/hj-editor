@@ -9,6 +9,16 @@
   directory = "netlify/functions"
   node_bundler = "esbuild"
 
+# Netlify 默认对静态文件发 `cache-control: public, max-age=0, must-revalidate`，
+# 结果每次打开分享页，浏览器都要为每个 JS / CSS / 字体走一次 304 往返。
+# 国内到 Netlify 没有节点，一次往返就要好几秒，十几个文件叠起来就是几十秒。
+# `/assets/*` 里的文件名都带内容 hash（Vite 生成），可以直接锁一年，
+# 部署后内容变了 hash 也跟着变，不存在缓存到旧文件的问题。
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
 # 分享接口由 Functions 处理（优先于下面的回落规则），其余路径交给单页入口
 [[redirects]]
   from = "/*"

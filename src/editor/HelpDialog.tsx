@@ -1,5 +1,13 @@
-import { useEffect } from 'react'
-import { X } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { RotateCcw, X } from 'lucide-react'
+import { eventToKey, formatKey, hasModifier } from './keys'
+import {
+  findShortcutConflict,
+  SHORTCUT_GROUPS,
+  SHORTCUTS,
+  type ShortcutId,
+  type ShortcutMap,
+} from './shortcuts'
 
 export type HelpTab = 'syntax' | 'shortcuts'
 
@@ -7,7 +15,6 @@ const SYNTAX_ROWS: [string, string][] = [
   ['标题', '# 一级标题 / ## 二级标题'],
   ['加粗', '**文本**'],
   ['斜体', '*文本*'],
-  ['下划线', '选中后使用工具栏'],
   ['删除线', '~~文本~~'],
   ['行内代码', '`代码`'],
   ['链接', '[文字](https://example.com)'],
@@ -25,52 +32,87 @@ const SYNTAX_ROWS: [string, string][] = [
   ['分割线', '---'],
 ]
 
-const SHORTCUT_ROWS: [string, string][] = [
-  ['保存草稿', 'Ctrl S'],
-  ['导入文件', 'Ctrl O（.md / .txt / .html，也可拖入）'],
-  ['Markdown 源码', 'Ctrl /'],
-  ['加粗 / 斜体 / 下划线', 'Ctrl B / Ctrl I / Ctrl U'],
-  ['删除线 / 行内代码', 'Ctrl Shift S / Ctrl E'],
-  ['正文 / 标题 1-4', 'Ctrl Alt 0 ~ 4'],
-  ['引用 / 代码块', 'Ctrl Shift B / Ctrl Alt C'],
-  ['无序 / 有序 / 任务列表', 'Ctrl Shift 8 / 7 / 9'],
-  ['插入链接', 'Ctrl K'],
-  ['撤销 / 重做', 'Ctrl Z / Ctrl Shift Z'],
-  ['全选', 'Ctrl A'],
-  ['粘贴 Markdown', '直接粘贴自动排版 · Shift 粘贴保留原文'],
-  ['激光笔 / 页面批注', 'Ctrl Shift L'],
-  ['隐藏标题栏和状态栏', 'Ctrl Shift H'],
-  ['画笔工具 / 粗细', '1-5 切换工具 · F 渐隐或保留'],
-  ['文字标注 / 截屏', '6 点按输入文字 · S 截屏保存'],
-  ['移动批注', '7 选中移动工具，拖动笔迹或文字调整位置'],
-  ['清除与退出', 'C 清空 · Ctrl Z 撤销 · Esc 退出'],
-]
-
 export function HelpDialog({
   open,
   tab,
   onTabChange,
+  shortcutKeys,
+  onShortcutChange,
+  onShortcutReset,
   onClose,
 }: {
   open: boolean
   tab: HelpTab
   onTabChange: (tab: HelpTab) => void
+  shortcutKeys: ShortcutMap
+  onShortcutChange: (keys: ShortcutMap) => void
+  onShortcutReset: () => void
   onClose: () => void
 }) {
+  const [recording, setRecording] = useState<ShortcutId | null>(null)
+  const [conflict, setConflict] = useState<string | null>(null)
+
   useEffect(() => {
     if (!open) return
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose()
+      // 录制时 Esc 归录制逻辑管，别顺手把面板也关了
+      if (event.key === 'Escape' && !recording) onClose()
     }
 
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [open, onClose])
+  }, [open, recording, onClose])
+
+  // 录制键位：window 捕获阶段先截住，免得同一个组合键在编辑器里也触发一次
+  useEffect(() => {
+    if (!open || !recording) return
+
+    const handleKey = (event: KeyboardEvent) => {
+      event.preventDefault()
+      event.stopPropagation()
+
+      if (event.key === 'Escape') {
+        setRecording(null)
+        setConflict(null)
+        return
+      }
+      // 清空等于退回默认：内置键位和自定义键位始终只有一套
+      if (event.key === 'Backspace' || event.key === 'Delete') {
+        const item = SHORTCUTS.find((entry) => entry.id === recording)
+        onShortcutChange({
+          ...shortcutKeys,
+          [recording]: item?.defaultKey ?? '',
+        })
+        setRecording(null)
+        setConflict(null)
+        return
+      }
+
+      const combo = eventToKey(event)
+      if (!combo) return
+
+      if (!hasModifier(combo)) {
+        setConflict('要和打字区分开，请带上 Ctrl / ⌘ 或 Alt')
+        return
+      }
+
+      const taken = findShortcutConflict(shortcutKeys, recording, combo)
+      if (taken) {
+        setConflict(`与「${taken.label}」冲突，换一个组合或先改它`)
+        return
+      }
+
+      onShortcutChange({ ...shortcutKeys, [recording]: combo })
+      setRecording(null)
+      setConflict(null)
+    }
+
+    window.addEventListener('keydown', handleKey, true)
+    return () => window.removeEventListener('keydown', handleKey, true)
+  }, [open, recording, shortcutKeys, onShortcutChange])
 
   if (!open) return null
-
-  const rows = tab === 'syntax' ? SYNTAX_ROWS : SHORTCUT_ROWS
 
   return (
     <div className="help-backdrop" onClick={onClose}>
@@ -113,18 +155,91 @@ export function HelpDialog({
         </header>
 
         <div className="help-body">
-          <dl className="help-list">
-            {rows.map(([label, value]) => (
-              <div className="help-row" key={label}>
-                <dt>{label}</dt>
-                <dd>{value}</dd>
-              </div>
-            ))}
-          </dl>
+          {tab === 'syntax' ? (
+            <dl className="help-list">
+              {SYNTAX_ROWS.map(([label, value]) => (
+                <div className="help-row" key={label}>
+                  <dt>{label}</dt>
+                  <dd>{value}</dd>
+                </div>
+              ))}
+            </dl>
+          ) : (
+            <div className="help-shortcut-groups">
+              {SHORTCUT_GROUPS.map((group) => (
+                <section className="help-shortcut-group" key={group}>
+                  <p className="help-shortcut-title">{group}</p>
+                  <dl className="help-list">
+                    {SHORTCUTS.filter((item) => item.group === group).map(
+                      (item) => {
+                        const active = recording === item.id
+                        return (
+                          <div className="help-row" key={item.id}>
+                            <dt>{item.label}</dt>
+                            <dd>
+                              <button
+                                type="button"
+                                className="help-key"
+                                data-recording={active}
+                                aria-label={`${item.label}：${formatKey(
+                                  shortcutKeys[item.id],
+                                )}，点击修改`}
+                                onPointerDown={(event) => event.preventDefault()}
+                                onClick={() => {
+                                  setConflict(null)
+                                  setRecording(item.id)
+                                }}
+                              >
+                                {active
+                                  ? '按下组合键…'
+                                  : formatKey(shortcutKeys[item.id])}
+                              </button>
+                            </dd>
+                          </div>
+                        )
+                      },
+                    )}
+                  </dl>
+                </section>
+              ))}
+              {conflict && (
+                <p className="help-shortcut-note" role="alert">
+                  {conflict}
+                </p>
+              )}
+            </div>
+          )}
         </div>
 
         <footer className="help-foot">
-          标题、列表、引用、代码块、公式与分割线支持直接输入 Markdown 语法，回车后自动转换；双击公式可修改 LaTeX。代码块语言选 Mermaid 渲染流程图，选 ECharts 渲染数据图表（内容是 option，JSON 或一段返回对象的 JS 都行，可用 `// height: 420` 指定高度）。长代码块可在右上角折叠成 3 行，块下方的「展开代码」按钮随时点开。
+          {tab === 'syntax' ? (
+            <p className="help-note">
+              标题、列表、引用、代码块、公式与分割线支持直接输入 Markdown
+              语法，回车后自动转换；双击公式可修改 LaTeX。光标处输入「/」可以就地选插入项，左侧栏留作速查。
+              代码块语言选 Mermaid 渲染流程图，选 ECharts
+              渲染数据图表（内容是 option，JSON 或一段返回对象的 JS 都行，可用
+              `// height: 420` 指定高度）。长代码块可在右上角折叠成 3
+              行，块下方的「展开代码」按钮随时点开。
+            </p>
+          ) : (
+            <div className="help-shortcut-foot">
+              <p className="help-note">
+                点键位后按下组合键即可改 · Backspace 恢复默认 · Esc 取消。改动即时生效并记住，侧栏、图标提示与「/」菜单里的 kbd 会一起更新。
+              </p>
+              <button
+                type="button"
+                className="help-reset"
+                onClick={() => {
+                  setRecording(null)
+                  setConflict(null)
+                  onShortcutReset()
+                }}
+              >
+                <RotateCcw size={12} />
+                恢复默认
+              </button>
+            </div>
+          )}
         </footer>
       </section>
     </div>

@@ -12,9 +12,6 @@ dist
 dist-ssr
 *.local
 
-# file-viewer 运行时资源，由 @file-viewer/vite-plugin 自动复制
-public/file-viewer
-
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
@@ -28,6 +25,3 @@ public/file-viewer
 
 # Local Netlify folder
 .netlify
-
-# 本地开发时 /api/file 落盘目录
-.local-files

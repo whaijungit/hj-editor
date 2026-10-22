@@ -1,19 +1,18 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ChangeEvent,
   type CSSProperties,
 } from 'react'
-import { Link2, PanelBottom, PanelTop, Paperclip, Zap } from 'lucide-react'
+import { PenLine, Zap } from 'lucide-react'
 import {
   EditorContent,
   useEditor,
   type Editor,
 } from '@tiptap/react'
-import { BubbleMenu } from '@tiptap/react/menus'
-import { BubbleToolbar } from './Toolbar'
 import { CodeBlockLanguage } from './CodeBlockLanguage'
 import { TableToolbar } from './TableToolbar'
 import { editorExtensions } from './extensions'
@@ -33,23 +32,38 @@ import {
   IMPORT_FILE_ACCEPT,
   readImportFile,
 } from './importFile'
-import { TitleBar } from './TitleBar'
-import { useIsMobile } from './useIsMobile'
+import { Sidebar } from './Sidebar'
+import { SlashMenu } from './SlashMenu'
+import {
+  buildInsertPalette,
+  filterPalette,
+  flattenPalette,
+  type PaletteEntry,
+  type PaletteItem,
+} from './insertPalette'
+import { eventToKey } from './keys'
+import {
+  defaultShortcutKeys,
+  isRetiredDefault,
+  loadShortcutKeys,
+  resolveShortcut,
+  saveShortcutKeys,
+  shortcutHint,
+  type ShortcutDef,
+  type ShortcutMap,
+} from './shortcuts'
 import { OutlineRail } from './OutlineRail'
 import { DocResizer } from './DocResizer'
-import { StatusBar } from './StatusBar'
 import { SourceDrawer } from './SourceDrawer'
 import { HelpDialog, type HelpTab } from './HelpDialog'
 import { ThemeDialog } from './ThemeDialog'
-import { FilePreview } from './FilePreview'
-import { FILE_OPEN_EVENT, insertFileBlock } from './fileBlock'
-import { uploadFile } from './fileStore'
 import { ShareDialog } from './ShareDialog'
 import {
+  clearCloudDocRef,
   fetchSharedDocument,
-  publishDocument,
-  SHARE_QUERY,
-  sharedDocIdFromUrl,
+  loadCloudDocRef,
+  saveCloudDocRef,
+  saveDocumentToServer,
 } from './share'
 import { useCustomFonts } from './customFonts'
 import { useBodyFontLoad } from './useBodyFontLoad'
@@ -99,7 +113,68 @@ const TYPEWRITER_START_DELAY = 420
 /** 激光光束的最小间隔：控制出现密度，避免每个字都在闪光 */
 const TYPEWRITER_FLASH_INTERVAL = 90
 
-export function RichTextEditor() {
+type SlashTrigger = {
+  /** 「/」所在位置，选中后从这里开始删 */
+  from: number
+  /** 光标位置，也是查询串的结尾 */
+  to: number
+  query: string
+  /** 菜单定位用的视口坐标 */
+  left: number
+  top: number
+}
+
+/**
+ * 光标前是不是刚敲了「/」：只认行首或空格之后，
+ * 查询串不含空白，敲空格 / 换行就等于放弃这次插入。
+ */
+function readSlashTrigger(editor: Editor): SlashTrigger | null {
+  const { selection } = editor.state
+  if (!selection.empty) return null
+
+  const { $from } = selection
+  if (!$from.parent.isTextblock || $from.parent.type.spec.code) return null
+
+  // 原子节点（公式等）记成占位符，免得把它们的文本当成查询串
+  const before = $from.parent.textBetween(0, $from.parentOffset, undefined, '\ufffc')
+  const match = /(?:^|[\s\u3000])\/([^\s/]{0,20})$/.exec(before)
+  if (!match) return null
+
+  const from = $from.pos - match[1].length - 1
+  const coords = editor.view.coordsAtPos(from)
+  return {
+    from,
+    to: $from.pos,
+    query: match[1],
+    left: coords.left,
+    top: coords.bottom + 6,
+  }
+}
+
+/** 先删掉「/查询」，再执行插入：光标落点才正好在插入结果上 */
+function applyPaletteItem(
+  editor: Editor,
+  trigger: { from: number; to: number },
+  item: PaletteItem,
+) {
+  editor.chain().focus().deleteRange({ from: trigger.from, to: trigger.to }).run()
+  item.run(editor)
+}
+
+type RichTextEditorProps = {
+  /** 分享页传入：只读呈现这个 id 的文稿，既不读也不写本地草稿 */
+  sharedDocId?: string
+  /** 从分享页退回编辑页时要补的一条提示：在编辑页挂载后 toast 一次 */
+  notice?: string
+  /** 离开分享页：由路由层实现，让 URL 与 router 状态一起切回编辑页 */
+  onExitShare?: (notice?: string) => void
+}
+
+export function RichTextEditor({
+  sharedDocId,
+  notice,
+  onExitShare,
+}: RichTextEditorProps) {
   // 同步快照保证首屏不闪；正式草稿在 IndexedDB 里，异步补齐
   const [draft, setDraft] = useState(loadDraft)
   const [hydrated, setHydrated] = useState(false)
@@ -109,24 +184,18 @@ export function RichTextEditor() {
     () => window.matchMedia('(prefers-color-scheme: dark)').matches,
   )
   const [themeOpen, setThemeOpen] = useState(false)
-  const [previewOpen, setPreviewOpen] = useState(false)
-  /** 从正文卡片点开时带过来的文件，null 表示只是打开预览弹窗 */
-  const [previewFile, setPreviewFile] = useState<{
-    url: string
-    name: string
-  } | null>(null)
   const [docWidth, setDocWidth] = useState(loadDocWidth)
   const [focusMode, setFocusMode] = useState(false)
   const [typewriterMode, setTypewriterMode] = useState(false)
   const [typingDemo, setTypingDemo] = useState(false)
   const [laserActive, setLaserActive] = useState(false)
-  const [titleBarHidden, setTitleBarHidden] = useState(
-    () => !loadChromeVisibility().titleBar,
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(
+    () => !loadChromeVisibility().sidebar,
   )
-  const [statusBarHidden, setStatusBarHidden] = useState(
-    () => !loadChromeVisibility().statusBar,
+  /** 写作模式：侧栏、大纲、拖拽手柄全部让出，整页只剩正文 */
+  const [writingMode, setWritingMode] = useState(
+    () => loadChromeVisibility().writing,
   )
-  const isMobile = useIsMobile()
 
   const [sourceOpen, setSourceOpen] = useState(false)
   const [sourceMarkdown, setSourceMarkdown] = useState('')
@@ -135,16 +204,24 @@ export function RichTextEditor() {
   const [helpOpen, setHelpOpen] = useState(false)
   const [helpTab, setHelpTab] = useState<HelpTab>('syntax')
   const [toast, setToast] = useState<string | null>(null)
+  /** 光标处的「/」插入菜单；null 表示没打开 */
+  const [slashMenu, setSlashMenu] = useState<SlashTrigger | null>(null)
+  const [slashIndex, setSlashIndex] = useState(0)
+  /** 正文快捷键：可在帮助面板里改，改了存 localStorage */
+  const [shortcutKeys, setShortcutKeys] = useState<ShortcutMap>(loadShortcutKeys)
 
   const [shareOpen, setShareOpen] = useState(false)
   const [sharePublishing, setSharePublishing] = useState(false)
   const [shareUrl, setShareUrl] = useState('')
   const [shareError, setShareError] = useState<string | null>(null)
-  const [sharedReadonly, setSharedReadonly] = useState(false)
-  // 带 ?doc= 进来时一开始就是加载态：先别把编辑入口亮出来
-  const [sharedLoading, setSharedLoading] = useState(
-    () => sharedDocIdFromUrl() !== null,
+  const [cloudSaving, setCloudSaving] = useState(false)
+  /** 这篇文稿最近一次存到云端的时间；0 表示还没存过 */
+  const [cloudSavedAt, setCloudSavedAt] = useState(
+    () => loadCloudDocRef()?.savedAt ?? 0,
   )
+  const [sharedReadonly, setSharedReadonly] = useState(false)
+  // 分享页一进来就是加载态：先别把编辑入口亮出来
+  const [sharedLoading, setSharedLoading] = useState(sharedDocId !== undefined)
 
   const editorRef = useRef<Editor | null>(null)
   const titleRef = useRef(title)
@@ -154,9 +231,19 @@ export function RichTextEditor() {
   const draftRef = useRef(draft)
   const toastTimer = useRef<number | undefined>(undefined)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  /** 打开分享链接时固定下来的 id：只读期间既不写本地草稿，也不重新拉取 */
-  const sharedIdRef = useRef<string | null>(sharedDocIdFromUrl())
+  /** 分享页的路由参数：只读期间既不写本地草稿，也不重新拉取 */
+  const sharedIdRef = useRef<string | null>(sharedDocId ?? null)
   const sharedReadonlyRef = useRef(false)
+  /** 这篇文稿在云端的 id；null 表示还没存过，第一次保存会新建 */
+  const cloudIdRef = useRef<string | null>(loadCloudDocRef()?.id ?? null)
+  /** 同步的「保存中」标记：连按快捷键时不要并发上传同一篇 */
+  const cloudSavingRef = useRef(false)
+  /** 斜杠菜单：ref 给 editorProps.handleKeyDown 读最新值，state 只负责渲染 */
+  const slashMenuRef = useRef<SlashTrigger | null>(null)
+  const slashItemsRef = useRef<PaletteEntry[]>([])
+  const slashIndexRef = useRef(0)
+  /** 快捷键表同样走 ref：按键处理在 ProseMirror 里，读不到最新的渲染闭包 */
+  const shortcutKeysRef = useRef<ShortcutMap>(shortcutKeys)
 
   titleRef.current = title
 
@@ -165,6 +252,14 @@ export function RichTextEditor() {
     if (toastTimer.current) window.clearTimeout(toastTimer.current)
     toastTimer.current = window.setTimeout(() => setToast(null), 2200)
   }, [])
+
+  // 从分享页退回来时带的一次性提示，挂载后播一次就够了
+  const noticeShownRef = useRef(false)
+  useEffect(() => {
+    if (noticeShownRef.current || !notice) return
+    noticeShownRef.current = true
+    notify(notice)
+  }, [notice, notify])
 
   const persist = useCallback(
     (withToast: boolean) => {
@@ -178,6 +273,60 @@ export function RichTextEditor() {
     },
     [notify],
   )
+
+  /** 换了一篇文稿：云端指向要跟着断，免得新内容覆盖掉上一篇 */
+  const forgetCloudDoc = useCallback(() => {
+    cloudIdRef.current = null
+    clearCloudDocRef()
+    setCloudSavedAt(0)
+  }, [])
+
+  /**
+   * 保存到服务器（Netlify Blobs）：第一次新建，之后覆盖同一篇，
+   * 所以反复保存只会更新内容，链接不变、也不会在云端堆一堆重复文稿。
+   */
+  const saveToCloud = useCallback(async () => {
+    const editor = editorRef.current
+    if (!editor) return
+    if (sharedReadonlyRef.current) {
+      notify('分享文稿是只读的，先接管为本地文稿再保存')
+      return
+    }
+    if (cloudSavingRef.current) return
+
+    cloudSavingRef.current = true
+    setCloudSaving(true)
+    // 第一次保存会生成链接，顺手复制一下；之后只是更新内容，链接没变
+    const isFirstSave = cloudIdRef.current === null
+    try {
+      const saved = await saveDocumentToServer(
+        cloudIdRef.current,
+        titleRef.current,
+        editor.getHTML(),
+      )
+      cloudIdRef.current = saved.id
+      saveCloudDocRef({ id: saved.id, savedAt: saved.updatedAt })
+      setCloudSavedAt(saved.updatedAt)
+
+      if (isFirstSave) {
+        try {
+          await navigator.clipboard.writeText(saved.url)
+          notify('已保存到云端，链接已复制')
+        } catch {
+          notify('已保存到云端')
+        }
+      } else {
+        notify('已保存到云端')
+      }
+    } catch (error) {
+      notify(
+        error instanceof Error ? error.message : '保存到云端失败，请稍后再试',
+      )
+    } finally {
+      cloudSavingRef.current = false
+      setCloudSaving(false)
+    }
+  }, [notify])
 
   const insertImageFiles = useCallback((files: File[]) => {
     const editor = editorRef.current
@@ -199,30 +348,6 @@ export function RichTextEditor() {
         reader.readAsDataURL(file)
       })
   }, [])
-
-  /** 非图片文件：传到文件服务，换回地址后插成文件卡片 */
-  const attachFiles = useCallback(
-    async (files: File[], pos?: number) => {
-      const editor = editorRef.current
-      if (!editor || !files.length) return
-
-      if (typeof pos === 'number') {
-        editor.chain().focus().setTextSelection(pos).run()
-      }
-
-      for (const file of files) {
-        try {
-          const stored = await uploadFile(file)
-          insertFileBlock(editor, stored)
-          notify(`已插入 ${stored.name}`)
-        } catch (error) {
-          notify(error instanceof Error ? error.message : '文件上传失败')
-          break
-        }
-      }
-    },
-    [notify],
-  )
 
   const importFile = useCallback(
     async (file: File) => {
@@ -251,18 +376,55 @@ export function RichTextEditor() {
         setSharedReadonly(false)
         editor.setEditable(true)
         setTitle(importedTitle)
+        // 导入的是另一篇文稿：云端保存从新建开始，别覆盖上一篇
+        forgetCloudDoc()
         dirtyRef.current = true
         notify(`已导入 ${file.name}`)
       } catch {
         notify('文件读取失败，请确认文件格式正确')
       }
     },
-    [notify],
+    [forgetCloudDoc, notify],
   )
 
   const openImportPicker = useCallback(() => {
     fileInputRef.current?.click()
   }, [])
+
+  /** 把快捷键动作接到当前编辑器与界面回调上；依赖都稳定，闭包不会过期 */
+  const runShortcut = useCallback(
+    (action: ShortcutDef) => {
+      const current = editorRef.current
+      if (!current) return
+      action.run({
+        editor: current,
+        save: () => persist(true),
+        saveCloud: () => void saveToCloud(),
+        importFile: openImportPicker,
+        toggleSource: () => setSourceOpen((value) => !value),
+        openHelp: () => {
+          setHelpTab('shortcuts')
+          setHelpOpen(true)
+        },
+        toggleSidebar: () => setSidebarCollapsed((value) => !value),
+        toggleWriting: () => setWritingMode((value) => !value),
+        toggleLaser: () => setLaserActive((value) => !value),
+      })
+    },
+    [openImportPicker, persist, saveToCloud],
+  )
+
+  /** 用户在帮助面板里改了键位：立刻生效，顺手落盘 */
+  const applyShortcutKeys = useCallback((next: ShortcutMap) => {
+    shortcutKeysRef.current = next
+    setShortcutKeys(next)
+    saveShortcutKeys(next)
+  }, [])
+
+  const resetShortcutKeys = useCallback(() => {
+    applyShortcutKeys(defaultShortcutKeys())
+    notify('快捷键已恢复默认')
+  }, [applyShortcutKeys, notify])
 
   const handleImportChange = useCallback(
     (event: ChangeEvent<HTMLInputElement>) => {
@@ -296,14 +458,6 @@ export function RichTextEditor() {
         if (files.some((file) => file.type.startsWith('image/'))) {
           event.preventDefault()
           insertImageFiles(files)
-          return true
-        }
-
-        // 剪贴板里是 docx/pdf 之类的文件：当附件上传，不当作文本处理
-        const attachments = files.filter((file) => !canImportFile(file))
-        if (attachments.length) {
-          event.preventDefault()
-          void attachFiles(attachments)
           return true
         }
 
@@ -379,45 +533,143 @@ export function RichTextEditor() {
           return true
         }
 
-        // 其余文件当附件：上传后在落点插入文件卡片
+        // 其余类型的文件没有对应功能，拖进来直接忽略
         event.preventDefault()
-        void attachFiles(files, coords?.pos)
         return true
       },
       handleKeyDown: (_view, event) => {
-        const mod = event.metaKey || event.ctrlKey
-        if (!mod) return false
+        // 斜杠菜单开着时，方向键与回车归菜单管：光标别跑，也别把换行插进正文
+        if (slashMenuRef.current) {
+          const entries = slashItemsRef.current
+          if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+            if (entries.length) {
+              event.preventDefault()
+              const step = event.key === 'ArrowDown' ? 1 : -1
+              const next =
+                (slashIndexRef.current + step + entries.length) % entries.length
+              slashIndexRef.current = next
+              setSlashIndex(next)
+            }
+            return true
+          }
+          if (event.key === 'Enter' || event.key === 'Tab') {
+            const entry = entries[slashIndexRef.current]
+            if (!entry) {
+              // 没有可选项就当用户放弃了这次插入，回车照常换行
+              slashMenuRef.current = null
+              setSlashMenu(null)
+              return false
+            }
+            event.preventDefault()
+            const current = editorRef.current
+            const trigger = slashMenuRef.current
+            slashMenuRef.current = null
+            setSlashMenu(null)
+            if (current && trigger) applyPaletteItem(current, trigger, entry.item)
+            return true
+          }
+          if (event.key === 'Escape') {
+            event.preventDefault()
+            slashMenuRef.current = null
+            setSlashMenu(null)
+            return true
+          }
+        }
 
-        // 只读分享里只看得见正文，保存 / 导入这类操作一律不响应
-        if (sharedReadonlyRef.current) {
-          if (['s', 'o'].includes(event.key.toLowerCase())) {
+        // 输入法组合期间不抢键：确认候选的那些键要留给输入法
+        if (event.isComposing) return false
+
+        // 用户自定义的正文快捷键：按配置分派，不再各处 if (key === 'b')
+        const combo = eventToKey(event)
+        const action = combo
+          ? resolveShortcut(shortcutKeysRef.current, combo)
+          : null
+        if (!action) {
+          // 用户把某个动作挪走后，TipTap 内置的旧键位也不该继续生效
+          if (combo && isRetiredDefault(shortcutKeysRef.current, combo)) {
             event.preventDefault()
             return true
           }
           return false
         }
 
-        if (event.key.toLowerCase() === 's') {
+        // 只读分享里只留帮助，写入类动作既不执行也不触发浏览器默认行为
+        if (sharedReadonlyRef.current && !action.readonlySafe) {
           event.preventDefault()
-          persist(true)
           return true
         }
-        if (event.key.toLowerCase() === 'o') {
-          event.preventDefault()
-          openImportPicker()
-          return true
-        }
-        if (event.key === '/') {
-          event.preventDefault()
-          setSourceOpen((value) => !value)
-          return true
-        }
-        return false
+
+        event.preventDefault()
+        runShortcut(action)
+        return true
       },
     },
   })
 
   if (editor) editorRef.current = editor
+
+  // 光标前刚敲了「/」就打开插入菜单；光标离开、失焦或滚动时跟着关掉 / 重新定位
+  useEffect(() => {
+    if (!editor) return
+
+    const close = () => {
+      if (!slashMenuRef.current) return
+      slashMenuRef.current = null
+      setSlashMenu(null)
+    }
+
+    const sync = () => {
+      const current = editorRef.current
+      if (!current || !current.isEditable || sharedReadonlyRef.current) {
+        close()
+        return
+      }
+      // 输入法组合期间光标位置不稳，等 commit 后再算
+      if (current.view.composing) return
+
+      const trigger = readSlashTrigger(current)
+      if (!trigger) {
+        close()
+        return
+      }
+
+      const previous = slashMenuRef.current
+      const unchanged =
+        previous !== null &&
+        previous.from === trigger.from &&
+        previous.to === trigger.to &&
+        previous.query === trigger.query &&
+        Math.abs(previous.left - trigger.left) < 0.5 &&
+        Math.abs(previous.top - trigger.top) < 0.5
+
+      slashMenuRef.current = trigger
+      if (!unchanged) {
+        setSlashMenu(trigger)
+        // 查询变了就回到第一项；只是光标挪了位置则保留当前选中
+        if (!previous || previous.query !== trigger.query) {
+          slashIndexRef.current = 0
+          setSlashIndex(0)
+        }
+      }
+    }
+
+    editor.on('update', sync)
+    editor.on('selectionUpdate', sync)
+    editor.on('focus', sync)
+    editor.on('blur', close)
+    // 滚动是捕获阶段：正文区域自己滚也要重算菜单位置
+    window.addEventListener('scroll', sync, true)
+    window.addEventListener('resize', sync)
+
+    return () => {
+      editor.off('update', sync)
+      editor.off('selectionUpdate', sync)
+      editor.off('focus', sync)
+      editor.off('blur', close)
+      window.removeEventListener('scroll', sync, true)
+      window.removeEventListener('resize', sync)
+    }
+  }, [editor])
 
   useEffect(() => {
     draftRef.current = draft
@@ -461,7 +713,7 @@ export function RichTextEditor() {
     }
   }, [])
 
-  // 带 ?doc= 打开时拉取分享文稿，以只读方式呈现，避免误改后覆盖本地草稿
+  // 分享页（/share/<id>）拉取文稿，只读呈现，避免误改后覆盖本地草稿
   useEffect(() => {
     const id = sharedIdRef.current
     if (!id) return
@@ -478,24 +730,16 @@ export function RichTextEditor() {
         sharedReadonlyRef.current = true
         setSharedReadonly(true)
         setTitle(doc.title)
+        // 标签页标题跟着文稿走，转发出去也更像一篇文稿
+        document.title = doc.title || document.title
       })
-      .catch(async (error: unknown) => {
+      .catch((error: unknown) => {
         if (!alive) return
-        notify(error instanceof Error ? error.message : '分享文稿加载失败')
-        // 分享失效时退回本地草稿，别让页面一直空着
+        // 分享失效就退回编辑页：本地草稿交给重新挂载的编辑器自己加载
         sharedIdRef.current = null
-        const url = new URL(window.location.href)
-        url.searchParams.delete(SHARE_QUERY)
-        window.history.replaceState(null, '', url.toString())
-        const stored = await loadDraftAsync()
-        if (!alive) return
-        const target = editorRef.current
-        if (target && stored) {
-          // 已经退回本地文稿，编辑能力要跟着恢复
-          target.setEditable(true)
-          target.commands.setContent(stored.html, { emitUpdate: false })
-          setTitle(stored.title)
-        }
+        onExitShare?.(
+          error instanceof Error ? error.message : '分享文稿加载失败',
+        )
       })
       .finally(() => {
         if (alive) setSharedLoading(false)
@@ -504,7 +748,7 @@ export function RichTextEditor() {
     return () => {
       alive = false
     }
-  }, [notify])
+  }, [onExitShare])
 
   const resolvedTheme = resolveThemeMode(themeConfig, systemDark)
   const { status: fontStatus, retry: retryFont } = useBodyFontLoad(
@@ -522,18 +766,6 @@ export function RichTextEditor() {
     return () => query.removeEventListener('change', handleChange)
   }, [])
 
-  // 正文文件卡片被点开：交给预览弹窗渲染
-  useEffect(() => {
-    const handleOpen = (event: Event) => {
-      const detail = (event as CustomEvent<{ url: string; name: string }>).detail
-      if (!detail?.url) return
-      setPreviewFile({ url: detail.url, name: detail.name || '文件预览' })
-      setPreviewOpen(true)
-    }
-    document.addEventListener(FILE_OPEN_EVENT, handleOpen)
-    return () => document.removeEventListener(FILE_OPEN_EVENT, handleOpen)
-  }, [])
-
   useEffect(() => {
     applyTheme(themeConfig, resolvedTheme)
     // 图表的配色跟随主题，切换后需要重画
@@ -544,47 +776,39 @@ export function RichTextEditor() {
   }, [themeConfig, resolvedTheme, customFontMetas])
 
   useEffect(() => {
-    saveChromeVisibility({
-      titleBar: !titleBarHidden,
-      statusBar: !statusBarHidden,
-    })
-  }, [titleBarHidden, statusBarHidden])
+    saveChromeVisibility({ sidebar: !sidebarCollapsed, writing: writingMode })
+  }, [sidebarCollapsed, writingMode])
 
-  // 标题栏与状态栏都隐藏时再按快捷键恢复，否则一次性收起两者
-  const chromeHidden = titleBarHidden && statusBarHidden
-  const toggleChrome = useCallback(() => {
-    const next = !chromeHidden
-    setTitleBarHidden(next)
-    setStatusBarHidden(next)
-  }, [chromeHidden])
+  const toggleSidebar = useCallback(() => {
+    setSidebarCollapsed((value) => !value)
+  }, [])
+
+  /** 进出写作模式顺手把光标放回正文，别让用户再点一下 */
+  const toggleWritingMode = useCallback(() => {
+    setWritingMode((value) => !value)
+    window.setTimeout(() => editorRef.current?.commands.focus(), 0)
+  }, [])
 
   const updateTheme = useCallback((patch: Partial<ThemeConfig>) => {
     setThemeConfig((current) => ({ ...current, ...patch }))
   }, [])
 
+  // 视图类快捷键（侧栏、激光笔）不等编辑器焦点：走窗口监听，但让编辑器先处理
   useEffect(() => {
-    const handleViewShortcut = (event: KeyboardEvent) => {
-      if (!(event.metaKey || event.ctrlKey) || !event.shiftKey) return
-      if (event.key.toLowerCase() !== 'h') return
+    const handleGlobalShortcut = (event: KeyboardEvent) => {
+      if (event.isComposing || event.defaultPrevented) return
+      const combo = eventToKey(event)
+      const action = combo
+        ? resolveShortcut(shortcutKeysRef.current, combo, 'global')
+        : null
+      if (!action) return
       event.preventDefault()
-      toggleChrome()
+      runShortcut(action)
     }
 
-    window.addEventListener('keydown', handleViewShortcut)
-    return () => window.removeEventListener('keydown', handleViewShortcut)
-  }, [toggleChrome])
-
-  useEffect(() => {
-    const handleLaserShortcut = (event: KeyboardEvent) => {
-      if (!(event.metaKey || event.ctrlKey) || !event.shiftKey) return
-      if (event.key.toLowerCase() !== 'l') return
-      event.preventDefault()
-      setLaserActive((value) => !value)
-    }
-
-    window.addEventListener('keydown', handleLaserShortcut)
-    return () => window.removeEventListener('keydown', handleLaserShortcut)
-  }, [])
+    window.addEventListener('keydown', handleGlobalShortcut)
+    return () => window.removeEventListener('keydown', handleGlobalShortcut)
+  }, [runShortcut])
 
   useEffect(() => {
     dirtyRef.current = true
@@ -746,18 +970,25 @@ export function RichTextEditor() {
     }
   }, [editor, typewriterMode])
 
-  // 打开页面时把示例文稿逐字敲出来；任意点击 / 按键立即结束
+  // 打开页面时把正文逐字敲出来；任意点击 / 按键立即结束。
+  // 编辑页只对示例文稿演示，分享页则每次打开都把分享内容敲一遍。
   useEffect(() => {
     if (!editor) return
-    // 分享文稿不做打字演示
-    if (sharedIdRef.current) return
-    // 等 IndexedDB 里的正式草稿到位：否则会先把示例文稿敲一遍，再被真实内容顶掉
-    if (!hydrated) return
+    const isShare = sharedIdRef.current !== null
+    if (isShare) {
+      // 分享页等文稿拉回来再敲；加载中、加载失败都没得敲
+      if (sharedLoading || !sharedReadonly) return
+    } else {
+      // 等 IndexedDB 里的正式草稿到位：否则会先把示例文稿敲一遍，再被真实内容顶掉
+      if (!hydrated) return
+    }
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
 
-    const isExample =
-      !draft || editor.getText().replace(/\s+/g, '') === EXAMPLE_TEXT
-    if (!isExample) return
+    if (!isShare) {
+      const isExample =
+        !draft || editor.getText().replace(/\s+/g, '') === EXAMPLE_TEXT
+      if (!isExample) return
+    }
 
     const total = startTypingReveal(editor)
     if (!total) return
@@ -783,7 +1014,8 @@ export function RichTextEditor() {
       clearLaserFlashes()
       if (!editor.isDestroyed) {
         stopTypingReveal(editor)
-        editor.setEditable(true)
+        // 分享页演示完仍然只读，别顺手把编辑能力放开
+        editor.setEditable(!sharedReadonlyRef.current)
       }
       setTypingDemo(false)
     }
@@ -856,7 +1088,7 @@ export function RichTextEditor() {
     }, TYPEWRITER_START_DELAY)
 
     return finish
-  }, [editor, draft, hydrated])
+  }, [editor, draft, hydrated, sharedLoading, sharedReadonly])
 
   const navigateTo = useCallback((pos: number) => {
     const editor = editorRef.current
@@ -880,35 +1112,6 @@ export function RichTextEditor() {
     notify('Markdown 文件已导出')
   }, [notify])
 
-  const exportHtml = useCallback(async () => {
-    const editor = editorRef.current
-    if (!editor) return
-    const { buildStandaloneHtml } = await loadMarkdown()
-    const html = await buildStandaloneHtml(
-      titleRef.current,
-      editor.getHTML(),
-      resolvedTheme,
-    )
-    downloadText(
-      `${safeFileName(titleRef.current)}.html`,
-      html,
-      'text/html;charset=utf-8',
-    )
-    notify('HTML 文件已导出')
-  }, [notify, resolvedTheme])
-
-  const copyMarkdown = useCallback(async () => {
-    const editor = editorRef.current
-    if (!editor) return
-    try {
-      const { htmlToMarkdown } = await loadMarkdown()
-      await navigator.clipboard.writeText(htmlToMarkdown(editor.getHTML()))
-      notify('Markdown 已复制到剪贴板')
-    } catch {
-      notify('浏览器未授权剪贴板，请使用源码面板手动复制')
-    }
-  }, [notify])
-
   const publishShare = useCallback(async () => {
     const editor = editorRef.current
     if (!editor) return
@@ -916,10 +1119,18 @@ export function RichTextEditor() {
     setShareError(null)
     setShareUrl('')
     try {
-      const url = await publishDocument(titleRef.current, editor.getHTML())
-      setShareUrl(url)
+      // 已经保存到云端的文稿直接复用那一篇：链接稳定，云端也不会堆重复
+      const saved = await saveDocumentToServer(
+        cloudIdRef.current,
+        titleRef.current,
+        editor.getHTML(),
+      )
+      cloudIdRef.current = saved.id
+      saveCloudDocRef({ id: saved.id, savedAt: saved.updatedAt })
+      setCloudSavedAt(saved.updatedAt)
+      setShareUrl(saved.url)
       try {
-        await navigator.clipboard.writeText(url)
+        await navigator.clipboard.writeText(saved.url)
         notify('分享链接已复制')
       } catch {
         notify('链接已生成，可手动复制')
@@ -950,7 +1161,7 @@ export function RichTextEditor() {
 
   const closeShare = useCallback(() => setShareOpen(false), [])
 
-  /** 只读分享转成本地文稿：恢复编辑、写回草稿，并摘掉地址栏里的 doc 参数 */
+  /** 只读分享转成本地文稿：恢复编辑、写回草稿，并从 /share/<id> 回到编辑页 */
   const forkSharedDocument = useCallback(() => {
     const editor = editorRef.current
     if (!editor) return
@@ -961,13 +1172,12 @@ export function RichTextEditor() {
     }
     editor.setEditable(true)
     sharedReadonlyRef.current = false
-    setSharedReadonly(false)
-    dirtyRef.current = true
-    const url = new URL(window.location.href)
-    url.searchParams.delete(SHARE_QUERY)
-    window.history.replaceState(null, '', url.toString())
-    notify('已转为本地文稿，修改会自动保存')
-  }, [notify])
+    // 接管过来的是自己的新文稿，云端保存从头开始，不会改到原分享那篇
+    forgetCloudDoc()
+    // 先落盘再跳转：编辑页重新挂载时读到的就是刚接管的这篇内容
+    persist(false)
+    onExitShare?.('已转为本地文稿，修改会自动保存')
+  }, [forgetCloudDoc, onExitShare, persist])
 
   // 分享页上不显示任何按钮，留一个快捷键把文稿接管到本地
   useEffect(() => {
@@ -1001,9 +1211,10 @@ export function RichTextEditor() {
     setSharedReadonly(false)
     setTitle('未命名文稿')
     clearDraft()
+    forgetCloudDoc()
     dirtyRef.current = false
     notify('已新建文稿')
-  }, [notify])
+  }, [forgetCloudDoc, notify])
 
   const showHelp = useCallback((tab: HelpTab) => {
     setHelpTab(tab)
@@ -1012,55 +1223,79 @@ export function RichTextEditor() {
 
   const closeLaser = useCallback(() => setLaserActive(false), [])
 
+  // 键位改过之后，侧栏提示和斜杠菜单里的 kbd 要跟着变
+  const insertPalette = useMemo(
+    () => buildInsertPalette(shortcutKeys),
+    [shortcutKeys],
+  )
+
+  const slashQuery = slashMenu?.query ?? ''
+  const slashEntries = useMemo(
+    () => flattenPalette(filterPalette(insertPalette, slashQuery)),
+    [insertPalette, slashQuery],
+  )
+
+  // 键盘处理读的是 ref，这里把当前候选同步进去
+  useEffect(() => {
+    slashItemsRef.current = slashEntries
+  }, [slashEntries])
+
+  const pickSlashItem = useCallback((item: PaletteItem) => {
+    const current = editorRef.current
+    const trigger = slashMenuRef.current
+    if (!current || !trigger) return
+    slashMenuRef.current = null
+    setSlashMenu(null)
+    applyPaletteItem(current, trigger, item)
+  }, [])
+
+  const hoverSlashItem = useCallback((index: number) => {
+    slashIndexRef.current = index
+    setSlashIndex(index)
+  }, [])
+
   if (!editor) return null
 
   // 分享模式（只读）：整页只剩正文与激光笔。
   // 加载期间也算分享模式，免得内容还没到就把界面元素闪出来
   const readOnly = sharedReadonly || sharedLoading
+  // 写作模式与分享页共用「无侧栏」布局：整页只剩正文
+  const chromeHidden = readOnly || writingMode
+  const writingHint = shortcutHint(shortcutKeys, 'toggleWriting')
 
   return (
     <div
       className="typora-app"
-      data-hide-titlebar={readOnly || titleBarHidden || isMobile}
-      data-hide-statusbar={readOnly || statusBarHidden}
+      data-sidebar={chromeHidden ? 'hidden' : sidebarCollapsed ? 'collapsed' : 'open'}
+      data-writing={writingMode && !readOnly}
       data-readonly={readOnly}
     >
-      {!readOnly && (!titleBarHidden || isMobile) && (
-        <TitleBar
+      {!readOnly && !writingMode && (
+        <Sidebar
           editor={editor}
           title={title}
           onTitleChange={setTitle}
+          collapsed={sidebarCollapsed}
+          onToggleCollapsed={toggleSidebar}
           sourceOpen={sourceOpen}
           onToggleSource={() => setSourceOpen((value) => !value)}
           focusMode={focusMode}
           typewriterMode={typewriterMode}
           laserActive={laserActive}
-          titleBarHidden={titleBarHidden}
-          statusBarHidden={statusBarHidden}
           onToggleFocus={() => setFocusMode((value) => !value)}
+          onToggleWriting={toggleWritingMode}
           onToggleTypewriter={() => setTypewriterMode((value) => !value)}
           onToggleLaser={() => setLaserActive((value) => !value)}
-          onToggleTitleBar={() => setTitleBarHidden((value) => !value)}
-          onToggleStatusBar={() => setStatusBarHidden((value) => !value)}
-          onToggleChrome={toggleChrome}
-          theme={resolvedTheme}
-          onToggleTheme={() =>
-            updateTheme({ mode: resolvedTheme === 'dark' ? 'light' : 'dark' })
-          }
           onOpenTheme={() => setThemeOpen(true)}
           onNew={newDocument}
-          onImport={openImportPicker}
-          onOpenPreview={() => {
-            setPreviewFile(null)
-            setPreviewOpen(true)
-          }}
           onSave={() => persist(true)}
+          onSaveCloud={() => void saveToCloud()}
+          cloudSaving={cloudSaving}
+          cloudSavedAt={cloudSavedAt}
           onExportMarkdown={exportMarkdown}
-          onExportHtml={exportHtml}
-          onCopyMarkdown={copyMarkdown}
           onShare={openShare}
           onShowHelp={showHelp}
-          readOnly={readOnly}
+          shortcutKeys={shortcutKeys}
         />
       )}
 
@@ -1087,7 +1322,7 @@ export function RichTextEditor() {
             <EditorContent editor={editor} />
             <CodeBlockLanguage editor={editor} readOnly={readOnly} />
             <TableToolbar editor={editor} hidden={laserActive} />
-            {!readOnly && (
+            {!readOnly && !writingMode && (
               <DocResizer onResize={setDocWidth} onCommit={saveDocWidth} />
             )}
           </div>
@@ -1097,45 +1332,35 @@ export function RichTextEditor() {
       <OutlineRail
         editor={editor}
         onNavigate={navigateTo}
-        hidden={typingDemo || readOnly}
+        hidden={typingDemo || readOnly || writingMode}
       />
 
-      {!readOnly && !statusBarHidden && (
-        <StatusBar
-          editor={editor}
-          focusMode={focusMode}
-          typewriterMode={typewriterMode}
-          laserActive={laserActive}
-          sourceOpen={sourceOpen}
-          typing={typingDemo}
+      {/* 写作模式里侧栏整块让出，留一个角落按钮当出口 */}
+      {writingMode && !readOnly && (
+        <button
+          type="button"
+          className="writing-exit"
+          title={`退出写作模式${writingHint ? ` (${writingHint})` : ''}`}
+          onClick={toggleWritingMode}
+        >
+          <PenLine size={14} aria-hidden="true" />
+          退出写作模式
+        </button>
+      )}
+
+      {!readOnly && slashMenu && (
+        <SlashMenu
+          entries={slashEntries}
+          activeIndex={slashIndex}
+          left={slashMenu.left}
+          top={slashMenu.top}
+          query={slashMenu.query}
+          onPick={pickSlashItem}
+          onHover={hoverSlashItem}
         />
       )}
 
-      {!readOnly && (
-        <BubbleMenu
-          editor={editor}
-          className="bubble-menu-shell"
-          options={{ strategy: 'fixed', placement: 'top', offset: 10 }}
-        >
-          <BubbleToolbar editor={editor} />
-        </BubbleMenu>
-      )}
-
       <LaserPointer active={laserActive} onExit={closeLaser} />
-
-      {/* 标题栏默认隐藏，所以插入文件留一个常驻入口 */}
-      {!readOnly && !typingDemo && !laserActive && !sourceOpen && !focusMode && (
-        <button
-          type="button"
-          className="insert-file-fab"
-          aria-label="插入文件"
-          title="插入文件到光标处，也可以输入 /file 后按空格"
-          onClick={() => editor.chain().focus().insertFileUpload().run()}
-        >
-          <Paperclip size={15} />
-          插入文件
-        </button>
-      )}
 
       {/* 分享页只剩正文，激光笔留一个角落入口 */}
       {readOnly && !sharedLoading && !laserActive && (
@@ -1150,42 +1375,6 @@ export function RichTextEditor() {
         </button>
       )}
 
-      {!readOnly && ((titleBarHidden && !isMobile) || statusBarHidden) && (
-        <div className="chrome-restore" role="group" aria-label="显示界面元素">
-          {titleBarHidden && !isMobile && (
-            <button
-              type="button"
-              title="显示标题栏"
-              aria-label="显示标题栏"
-              onClick={() => setTitleBarHidden(false)}
-            >
-              <PanelTop size={14} />
-              标题栏
-            </button>
-          )}
-          {statusBarHidden && (
-            <button
-              type="button"
-              title="显示状态栏"
-              aria-label="显示状态栏"
-              onClick={() => setStatusBarHidden(false)}
-            >
-              <PanelBottom size={14} />
-              状态栏
-            </button>
-          )}
-          <button
-            type="button"
-            title="分享文稿"
-            aria-label="分享文稿"
-            onClick={openShare}
-          >
-            <Link2 size={14} />
-            分享
-          </button>
-        </div>
-      )}
-
       <SourceDrawer
         open={sourceOpen}
         markdown={sourceMarkdown}
@@ -1198,6 +1387,9 @@ export function RichTextEditor() {
         open={helpOpen}
         tab={helpTab}
         onTabChange={setHelpTab}
+        shortcutKeys={shortcutKeys}
+        onShortcutChange={applyShortcutKeys}
+        onShortcutReset={resetShortcutKeys}
         onClose={() => setHelpOpen(false)}
       />
 
@@ -1209,13 +1401,6 @@ export function RichTextEditor() {
         onReset={() => setThemeConfig(DEFAULT_THEME_CONFIG)}
         onRetryFont={retryFont}
         onClose={() => setThemeOpen(false)}
-      />
-
-      <FilePreview
-        open={previewOpen}
-        theme={resolvedTheme}
-        initial={previewFile}
-        onClose={() => setPreviewOpen(false)}
       />
 
       <ShareDialog

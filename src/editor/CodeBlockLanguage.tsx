@@ -157,12 +157,8 @@ export function CodeBlockLanguage({
   if (!info) return null
 
   const { rect } = info
-  const titlebar = Number.parseFloat(
-    getComputedStyle(
-      document.querySelector('.typora-app') ?? document.documentElement,
-    ).getPropertyValue('--titlebar-h'),
-  )
-  const minTop = (Number.isFinite(titlebar) ? titlebar : 46) + 10
+  // 顶部没有常驻横条了，徽标贴着可视区上沿留一点余量就行
+  const minTop = 12
 
   // 代码块顶部滚出视口时，徽标贴着可视区顶部继续可用
   const badgeTop = Math.max(

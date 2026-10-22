@@ -15,8 +15,7 @@ import { StarterKit } from '@tiptap/starter-kit'
 import { DEFAULT_CODE_LANGUAGE, lowlight } from './codeLanguages'
 import { CodeCollapse } from './codeCollapse'
 import { EchartsDiagram } from './echarts'
-import { FileBlock } from './fileBlock'
-import { FileUploadBlock } from './fileUploadBlock'
+import { MarkdownInsertShortcuts } from './insertCommands'
 import { BlockMath, InlineMath } from './math'
 import { MermaidDiagram } from './mermaid'
 import { TypingPop, TypingReveal } from './typingReveal'
@@ -79,14 +78,12 @@ export const editorExtensions = [
   TableCell,
   Placeholder.configure({
     placeholder:
-      '开始书写… 支持 Markdown 快捷语法，例如 # + 空格 生成标题，输入 /file 插入文件',
+      '开始书写… 支持 Markdown 快捷语法，例如 # + 空格 生成标题，```mermaid 插入流程图',
   }),
   InlineMath,
   BlockMath,
-  // 正文里的文件卡片：点开调用文件预览器
-  FileBlock,
-  // 在光标处展开的上传块：传完就地变成上面的文件卡片
-  FileUploadBlock,
+  // 插入语法（表格、分割线、图表、公式、高亮）的键盘入口
+  MarkdownInsertShortcuts,
   // ```mermaid 代码块下方渲染成流程图
   MermaidDiagram,
   // ```echarts 代码块下方渲染成数据图表

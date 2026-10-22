@@ -1,10 +1,14 @@
 import { getStore } from '@netlify/blobs'
 
 /**
- * 分享文稿的读写接口。
+ * 文稿的读写接口。
  *
  * 文稿存在 Netlify Blobs 里，而不是部署产物 dist 中：dist 是构建后上传到 CDN 的
  * 只读快照，运行时写不进去；Blobs 独立于部署，重新部署也不会丢数据。
+ *
+ * - POST          新建一篇，返回新的 id
+ * - PUT  ?id=…    覆盖已存在的那篇（「保存到云端」反复保存沿用同一个链接）
+ * - GET  ?id=…    取回内容（分享页读的就是它）
  */
 const STORE_NAME = 'shared-docs'
 /** 单篇上限 5MB：base64 图片多的长文档也够用，同时挡住误传的大文件 */
@@ -12,10 +16,11 @@ const MAX_DOC_BYTES = 5 * 1024 * 1024
 const MAX_TITLE_LENGTH = 200
 const ID_PATTERN = /^[a-z0-9]{6,32}$/
 
-type SharedDocument = {
+type StoredDocument = {
   title: string
   html: string
   createdAt: number
+  updatedAt: number
 }
 
 function respond(body: unknown, status = 200): Response {
@@ -40,43 +45,86 @@ function byteLength(value: string): number {
   return new TextEncoder().encode(value).length
 }
 
+type BodyResult =
+  | { ok: true; title: string; html: string }
+  | { ok: false; response: Response }
+
+/** 校验并裁剪请求体：新建与覆盖共用同一套规则 */
+async function readBody(req: Request): Promise<BodyResult> {
+  let payload: unknown
+  try {
+    payload = await req.json()
+  } catch {
+    return { ok: false, response: respond({ error: 'invalid json' }, 400) }
+  }
+
+  const body = payload as { title?: unknown; html?: unknown } | null
+  const html = typeof body?.html === 'string' ? body.html : ''
+  if (!html.trim()) {
+    return { ok: false, response: respond({ error: 'empty document' }, 400) }
+  }
+  if (byteLength(html) > MAX_DOC_BYTES) {
+    return {
+      ok: false,
+      response: respond({ error: 'document too large', limit: MAX_DOC_BYTES }, 413),
+    }
+  }
+
+  const title =
+    (typeof body?.title === 'string' ? body.title : '')
+      .slice(0, MAX_TITLE_LENGTH)
+      .trim() || '未命名文稿'
+
+  return { ok: true, title, html }
+}
+
 export default async function handler(req: Request): Promise<Response> {
   const store = getStore(STORE_NAME)
+  const idParam = new URL(req.url).searchParams.get('id')?.trim() ?? ''
 
   if (req.method === 'GET') {
-    const id = new URL(req.url).searchParams.get('id')?.trim() ?? ''
-    if (!ID_PATTERN.test(id)) return respond({ error: 'invalid id' }, 400)
+    if (!ID_PATTERN.test(idParam)) return respond({ error: 'invalid id' }, 400)
 
-    const doc = (await store.get(id, { type: 'json' })) as SharedDocument | null
+    const doc = (await store.get(idParam, { type: 'json' })) as StoredDocument | null
     if (!doc) return respond({ error: 'not found' }, 404)
     return respond(doc)
   }
 
-  if (req.method === 'POST') {
-    let payload: unknown
-    try {
-      payload = await req.json()
-    } catch {
-      return respond({ error: 'invalid json' }, 400)
-    }
+  if (req.method === 'POST' || req.method === 'PUT') {
+    const body = await readBody(req)
+    if (!body.ok) return body.response
 
-    const body = payload as Partial<SharedDocument> | null
-    const html = typeof body?.html === 'string' ? body.html : ''
-    if (!html.trim()) return respond({ error: 'empty document' }, 400)
-    if (byteLength(html) > MAX_DOC_BYTES) {
-      return respond({ error: 'document too large', limit: MAX_DOC_BYTES }, 413)
-    }
+    const now = Date.now()
 
-    const title =
-      (typeof body?.title === 'string' ? body.title : '')
-        .slice(0, MAX_TITLE_LENGTH)
-        .trim() || '未命名文稿'
+    // 覆盖保存：id 必须存在，否则让客户端改走新建，免得覆盖别人的文稿
+    if (req.method === 'PUT') {
+      if (!ID_PATTERN.test(idParam)) return respond({ error: 'invalid id' }, 400)
+
+      const existing = (await store.get(idParam, {
+        type: 'json',
+      })) as StoredDocument | null
+      if (!existing) return respond({ error: 'not found' }, 404)
+
+      const doc: StoredDocument = {
+        title: body.title,
+        html: body.html,
+        createdAt: existing.createdAt ?? now,
+        updatedAt: now,
+      }
+      await store.setJSON(idParam, doc)
+      return respond({ id: idParam, updatedAt: now })
+    }
 
     const id = createId()
-    const doc: SharedDocument = { title, html, createdAt: Date.now() }
+    const doc: StoredDocument = {
+      title: body.title,
+      html: body.html,
+      createdAt: now,
+      updatedAt: now,
+    }
     await store.setJSON(id, doc)
 
-    return respond({ id }, 201)
+    return respond({ id, updatedAt: now }, 201)
   }
 
   return respond({ error: 'method not allowed' }, 405)

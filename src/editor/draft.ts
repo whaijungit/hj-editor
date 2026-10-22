@@ -74,12 +74,14 @@ export function clearDraft() {
 }
 
 export type ChromeVisibility = {
-  titleBar: boolean
-  statusBar: boolean
+  /** 侧边栏是否展开；false 时只留一列图标 */
+  sidebar: boolean
+  /** 写作模式：侧栏和大纲整块让出，页面上只剩正文 */
+  writing: boolean
 }
 
-/** 默认沉浸排版：标题栏收起，状态栏保留 */
-const DEFAULT_CHROME: ChromeVisibility = { titleBar: false, statusBar: true }
+/** 默认展开侧边栏，菜单是唯一入口，先让用户看得见 */
+const DEFAULT_CHROME: ChromeVisibility = { sidebar: true, writing: false }
 
 export function loadChromeVisibility(): ChromeVisibility {
   try {
@@ -87,8 +89,8 @@ export function loadChromeVisibility(): ChromeVisibility {
     if (!raw) return DEFAULT_CHROME
     const parsed = JSON.parse(raw) as Partial<ChromeVisibility>
     return {
-      titleBar: parsed.titleBar === true,
-      statusBar: parsed.statusBar !== false,
+      sidebar: parsed.sidebar !== false,
+      writing: parsed.writing === true,
     }
   } catch {
     return DEFAULT_CHROME

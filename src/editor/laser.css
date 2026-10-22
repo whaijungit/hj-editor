@@ -18,7 +18,7 @@
 /* ---------- 工具条 ---------- */
 .laser-toolbar {
   position: absolute;
-  bottom: calc(var(--statusbar-h) + 14px);
+  bottom: ;
   left: 50%;
   display: flex;
   flex-wrap: wrap;
@@ -285,7 +285,7 @@
 .laser-panel {
   position: absolute;
   right: 16px;
-  bottom: calc(var(--statusbar-h) + 66px);
+  bottom: ;
   display: flex;
   flex-direction: column;
   width: 264px;
@@ -453,7 +453,7 @@
 /* ---------- 轻提示 ---------- */
 .laser-toast {
   position: absolute;
-  bottom: calc(var(--statusbar-h) + 62px);
+  bottom: ;
   left: 50%;
   padding: 6px 14px;
   border: 1px solid var(--border);
@@ -475,7 +475,7 @@
 /* ---------- 顶部提示 ---------- */
 .laser-hint {
   position: absolute;
-  top: calc(var(--titlebar-h) + 18px);
+  top: ;
   left: 50%;
   display: flex;
   align-items: center;
@@ -522,7 +522,7 @@
   /* 触屏：工具条贴边撑满、两行布局，按钮放大到 34px 便于点按 */
   .laser-toolbar {
     right: 10px;
-    bottom: calc(var(--statusbar-h) + 10px);
+    bottom: ;
     left: 10px;
     gap: 6px 4px;
     max-width: none;
@@ -578,12 +578,12 @@
 
   /* 两行工具条更高，轻提示与快捷键面板整体上移，避免叠压 */
   .laser-toast {
-    bottom: calc(var(--statusbar-h) + 108px);
+    bottom: ;
   }
 
   .laser-panel {
     right: 10px;
-    bottom: calc(var(--statusbar-h) + 108px);
+    bottom: ;
     left: 10px;
     width: auto;
   }
