@@ -45,13 +45,50 @@ export function hiddenSourceDecoration(pos: number, size: number): Decoration {
   return Decoration.node(pos, pos + size, { class: HIDDEN_SOURCE_CLASS })
 }
 
-/** 收起/展开源码。只改节点属性，代码内容本身不动 */
+/**
+ * 分享页（只读）里读者手动点开的源码块，按视图记一份。
+ * 不写回节点属性：读者只是看，别把「看没看源码」变成对文稿的修改。
+ */
+const readerExpanded = new WeakMap<EditorView, Set<number>>()
+
+function readerExpandedAt(view: EditorView, pos: number): boolean {
+  return readerExpanded.get(view)?.has(pos) === true
+}
+
+/**
+ * 这个图表块的源码要不要藏起来。
+ * 编辑页按节点的 `hideSource` 属性走；只读（分享页）一律先收起，
+ * 只有读者自己点开的那块才露出来。
+ */
+export function isSourceHiddenInView(
+  view: EditorView | undefined,
+  node: ProseMirrorNode,
+  pos: number,
+): boolean {
+  if (view && !view.editable) return !readerExpandedAt(view, pos)
+  return isSourceHidden(node)
+}
+
+/** 收起/展开源码。编辑页只改节点属性，代码内容本身不动 */
 export function toggleSource(view: EditorView, end: number | undefined) {
   if (end === undefined) return
   const before = view.state.doc.resolve(end).nodeBefore
   if (!before || before.type.name !== 'codeBlock') return
 
   const start = end - before.nodeSize
+
+  // 分享页只读：只切这份视图的显隐，文档属性一个字都不改
+  if (!view.editable) {
+    const expanded = readerExpanded.get(view) ?? new Set<number>()
+    if (expanded.has(start)) expanded.delete(start)
+    else expanded.add(start)
+    readerExpanded.set(view, expanded)
+    view.dispatch(
+      view.state.tr.setMeta(toggleSourceKey, true).setMeta('addToHistory', false),
+    )
+    return
+  }
+
   const hiding = !isSourceHidden(before)
   const transaction = view.state.tr.setNodeMarkup(start, undefined, {
     ...before.attrs,

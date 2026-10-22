@@ -7,7 +7,7 @@ import { observeViewport, stopObservingViewport } from './lazyRender'
 import {
   buildSourceToggle,
   hiddenSourceDecoration,
-  isSourceHidden,
+  isSourceHiddenInView,
   revealedSourceAt,
   toggleSourceKey,
 } from './sourceToggle'
@@ -347,7 +347,11 @@ function scheduleRebuild() {
   }, REBUILD_DELAY)
 }
 
-function buildDecorations(doc: ProseMirrorNode, revealed: number | null): DecorationSet {
+function buildDecorations(
+  doc: ProseMirrorNode,
+  revealed: number | null,
+  view: EditorView | undefined,
+): DecorationSet {
   pruneCharts()
   const decorations: Decoration[] = []
 
@@ -358,7 +362,7 @@ function buildDecorations(doc: ProseMirrorNode, revealed: number | null): Decora
     const code = node.textContent.trim()
     if (!code) return
 
-    const hidden = isSourceHidden(node)
+    const hidden = isSourceHiddenInView(view, node, pos)
     // 收起源码的块用装饰加类隐藏，文档内容原样保留；光标进来时临时露出来
     if (hidden && pos !== revealed) {
       decorations.push(hiddenSourceDecoration(pos, node.nodeSize))
@@ -392,7 +396,7 @@ export const EchartsDiagram = Extension.create({
         state: {
           init: (_config, state) => {
             const revealed = revealedSourceAt(state, isEchartsLanguage, canRevealSource())
-            return { revealed, decorations: buildDecorations(state.doc, revealed) }
+            return { revealed, decorations: buildDecorations(state.doc, revealed, editor.view) }
           },
           /**
            * 只在文档真正变化、主题切换、切换「隐藏源码」，
@@ -401,12 +405,23 @@ export const EchartsDiagram = Extension.create({
            */
           apply: (tr, value, _oldState, newState) => {
             const revealed = revealedSourceAt(newState, isEchartsLanguage, canRevealSource())
+            // 只读页（分享）没有高频输入，文档一变就整篇重建：
+            // 否则新内容先按旧装饰渲染，收起的源码会露出来几百毫秒
+            if (tr.docChanged && editor.isEditable === false) {
+              return {
+                revealed,
+                decorations: buildDecorations(newState.doc, revealed, editor.view),
+              }
+            }
             if (
               tr.getMeta(redrawKey) ||
               tr.getMeta(toggleSourceKey) ||
               revealed !== value.revealed
             ) {
-              return { revealed, decorations: buildDecorations(newState.doc, revealed) }
+              return {
+                revealed,
+                decorations: buildDecorations(newState.doc, revealed, editor.view),
+              }
             }
             if (tr.docChanged) {
               // 旧图表跟着位置映射走，内容变化等防抖结束后再重建
