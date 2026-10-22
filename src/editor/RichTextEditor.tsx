@@ -6,7 +6,7 @@ import {
   type ChangeEvent,
   type CSSProperties,
 } from 'react'
-import { Link2, PanelBottom, PanelTop, Paperclip } from 'lucide-react'
+import { Link2, PanelBottom, PanelTop, Paperclip, Zap } from 'lucide-react'
 import {
   EditorContent,
   useEditor,
@@ -388,13 +388,8 @@ export function RichTextEditor() {
         const mod = event.metaKey || event.ctrlKey
         if (!mod) return false
 
-        // 只读分享里只留「源码」这类查看操作，保存 / 导入一律不响应
+        // 只读分享里只看得见正文，保存 / 导入这类操作一律不响应
         if (sharedReadonlyRef.current) {
-          if (event.key === '/') {
-            event.preventDefault()
-            setSourceOpen((value) => !value)
-            return true
-          }
           if (['s', 'o'].includes(event.key.toLowerCase())) {
             event.preventDefault()
             return true
@@ -974,6 +969,19 @@ export function RichTextEditor() {
     notify('已转为本地文稿，修改会自动保存')
   }, [notify])
 
+  // 分享页上不显示任何按钮，留一个快捷键把文稿接管到本地
+  useEffect(() => {
+    if (!sharedReadonly) return
+    const handleForkShortcut = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || !event.shiftKey) return
+      if (event.key.toLowerCase() !== 'e') return
+      event.preventDefault()
+      forkSharedDocument()
+    }
+    window.addEventListener('keydown', handleForkShortcut)
+    return () => window.removeEventListener('keydown', handleForkShortcut)
+  }, [sharedReadonly, forkSharedDocument])
+
   const handleSourceCopy = useCallback(async () => {
     try {
       await navigator.clipboard.writeText(sourceMarkdown)
@@ -1006,18 +1014,18 @@ export function RichTextEditor() {
 
   if (!editor) return null
 
-  // 只读分享：只保留阅读与查看类操作，写入类入口统一由这个开关收掉。
-  // 加载期间也算只读，免得内容还没到就能点「新建文稿」把状态搅乱
+  // 分享模式（只读）：整页只剩正文与激光笔。
+  // 加载期间也算分享模式，免得内容还没到就把界面元素闪出来
   const readOnly = sharedReadonly || sharedLoading
 
   return (
     <div
       className="typora-app"
-      data-hide-titlebar={titleBarHidden || isMobile}
-      data-hide-statusbar={statusBarHidden}
+      data-hide-titlebar={readOnly || titleBarHidden || isMobile}
+      data-hide-statusbar={readOnly || statusBarHidden}
       data-readonly={readOnly}
     >
-      {(!titleBarHidden || isMobile) && (
+      {!readOnly && (!titleBarHidden || isMobile) && (
         <TitleBar
           editor={editor}
           title={title}
@@ -1062,15 +1070,6 @@ export function RichTextEditor() {
         </div>
       )}
 
-      {sharedReadonly && !sharedLoading && (
-        <div className="share-banner" role="status">
-          <span className="share-banner-label">只读分享</span>
-          <button type="button" onClick={forkSharedDocument}>
-            复制到本地编辑
-          </button>
-        </div>
-      )}
-
       <div
         className="typora-body"
         style={
@@ -1088,14 +1087,20 @@ export function RichTextEditor() {
             <EditorContent editor={editor} />
             <CodeBlockLanguage editor={editor} readOnly={readOnly} />
             <TableToolbar editor={editor} hidden={laserActive} />
-            <DocResizer onResize={setDocWidth} onCommit={saveDocWidth} />
+            {!readOnly && (
+              <DocResizer onResize={setDocWidth} onCommit={saveDocWidth} />
+            )}
           </div>
         </main>
       </div>
 
-      <OutlineRail editor={editor} onNavigate={navigateTo} hidden={typingDemo} />
+      <OutlineRail
+        editor={editor}
+        onNavigate={navigateTo}
+        hidden={typingDemo || readOnly}
+      />
 
-      {!statusBarHidden && (
+      {!readOnly && !statusBarHidden && (
         <StatusBar
           editor={editor}
           focusMode={focusMode}
@@ -1132,7 +1137,20 @@ export function RichTextEditor() {
         </button>
       )}
 
-      {((titleBarHidden && !isMobile) || statusBarHidden) && (
+      {/* 分享页只剩正文，激光笔留一个角落入口 */}
+      {readOnly && !sharedLoading && !laserActive && (
+        <button
+          type="button"
+          className="share-laser-fab"
+          title="激光笔"
+          aria-label="打开激光笔"
+          onClick={() => setLaserActive(true)}
+        >
+          <Zap size={15} />
+        </button>
+      )}
+
+      {!readOnly && ((titleBarHidden && !isMobile) || statusBarHidden) && (
         <div className="chrome-restore" role="group" aria-label="显示界面元素">
           {titleBarHidden && !isMobile && (
             <button
@@ -1156,17 +1174,15 @@ export function RichTextEditor() {
               状态栏
             </button>
           )}
-          {!readOnly && (
-            <button
-              type="button"
-              title="分享文稿"
-              aria-label="分享文稿"
-              onClick={openShare}
-            >
-              <Link2 size={14} />
-              分享
-            </button>
-          )}
+          <button
+            type="button"
+            title="分享文稿"
+            aria-label="分享文稿"
+            onClick={openShare}
+          >
+            <Link2 size={14} />
+            分享
+          </button>
         </div>
       )}
 

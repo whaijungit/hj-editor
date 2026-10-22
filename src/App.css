@@ -1137,44 +1137,47 @@ body[data-resizing='true'] {
   transform: translateX(-50%);
 }
 
-.share-banner-label {
-  color: var(--accent-strong);
-  font-weight: 550;
-}
-
-.share-banner button {
-  height: 26px;
-  padding: 0 11px;
-  border: 0;
-  border-radius: 999px;
-  background: var(--accent-soft);
-  color: var(--accent-strong);
-  font-size: 12px;
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.share-banner button:hover {
-  background: var(--accent-strong);
-  color: #fff;
-}
-
-/* ---------- 只读分享 ---------- */
-/* 标题退成纯展示，会改动文档的按钮一律收起 */
-.typora-app[data-readonly='true'] .doc-title,
-.typora-app[data-readonly='true'] .doc-title:hover {
-  background: transparent;
-  cursor: default;
-}
-
-.typora-app[data-readonly='true'] .save-hint {
-  color: var(--accent-strong);
-}
-
+/* ---------- 分享模式：整页只剩正文和激光笔 ---------- */
 .typora-app[data-readonly='true'] .file-block-btn[data-act='remove'],
 .typora-app[data-readonly='true'] .file-upload-pick,
 .typora-app[data-readonly='true'] .file-upload-close {
   display: none;
+}
+
+/* 正文上下留白随手，页面上唯一常驻的控件就是这个角落按钮 */
+.typora-app[data-readonly='true'] .writer {
+  padding-top: 28px;
+}
+
+.share-laser-fab {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 55;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  box-shadow: var(--shadow);
+  color: var(--text-tertiary);
+  cursor: pointer;
+  opacity: 0.4;
+  backdrop-filter: blur(10px);
+  transition:
+    opacity 0.18s ease,
+    color 0.18s ease,
+    border-color 0.18s ease;
+}
+
+.share-laser-fab:hover,
+.share-laser-fab:focus-visible {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  color: var(--accent);
+  opacity: 1;
 }
 
 /* ---------- 主题设置 ---------- */
