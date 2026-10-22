@@ -109,6 +109,8 @@ const EXAMPLE_TEXT = (() => {
 })()
 
 const TYPEWRITER_CHARS_PER_MS = 0.11
+/** 示例文稿超过这个长度就不敲了：几千字敲完要一分多钟，读者只能干等 */
+const TYPEWRITER_MAX_CHARS = 3000
 const TYPEWRITER_START_DELAY = 420
 /** 激光光束的最小间隔：控制出现密度，避免每个字都在闪光 */
 const TYPEWRITER_FLASH_INTERVAL = 90
@@ -988,6 +990,8 @@ export function RichTextEditor({
       const isExample =
         !draft || editor.getText().replace(/\s+/g, '') === EXAMPLE_TEXT
       if (!isExample) return
+      // 说明书这类长文稿整篇敲出来要一分多钟，直接排版展示
+      if (EXAMPLE_TEXT.length > TYPEWRITER_MAX_CHARS) return
     }
 
     const total = startTypingReveal(editor)
