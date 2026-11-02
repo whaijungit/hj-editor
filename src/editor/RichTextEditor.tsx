@@ -14,6 +14,7 @@ import {
   type Editor,
 } from '@tiptap/react'
 import { CodeBlockLanguage } from './CodeBlockLanguage'
+import { TableCellMenu } from './TableCellMenu'
 import { TableToolbar } from './TableToolbar'
 import { editorExtensions } from './extensions'
 import {
@@ -191,10 +192,7 @@ export function RichTextEditor({
   const [typewriterMode, setTypewriterMode] = useState(false)
   const [typingDemo, setTypingDemo] = useState(false)
   const [laserActive, setLaserActive] = useState(false)
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(
-    () => !loadChromeVisibility().sidebar,
-  )
-  /** 写作模式：侧栏、大纲、拖拽手柄全部让出，整页只剩正文 */
+  /** 写作模式：收起侧栏即进入，正文和右侧大纲保留 */
   const [writingMode, setWritingMode] = useState(
     () => loadChromeVisibility().writing,
   )
@@ -408,7 +406,6 @@ export function RichTextEditor({
           setHelpTab('shortcuts')
           setHelpOpen(true)
         },
-        toggleSidebar: () => setSidebarCollapsed((value) => !value),
         toggleWriting: () => setWritingMode((value) => !value),
         toggleLaser: () => setLaserActive((value) => !value),
       })
@@ -778,12 +775,8 @@ export function RichTextEditor({
   }, [themeConfig, resolvedTheme, customFontMetas])
 
   useEffect(() => {
-    saveChromeVisibility({ sidebar: !sidebarCollapsed, writing: writingMode })
-  }, [sidebarCollapsed, writingMode])
-
-  const toggleSidebar = useCallback(() => {
-    setSidebarCollapsed((value) => !value)
-  }, [])
+    saveChromeVisibility({ writing: writingMode })
+  }, [writingMode])
 
   /** 进出写作模式顺手把光标放回正文，别让用户再点一下 */
   const toggleWritingMode = useCallback(() => {
@@ -1263,14 +1256,14 @@ export function RichTextEditor({
   // 分享模式（只读）：整页只剩正文与激光笔。
   // 加载期间也算分享模式，免得内容还没到就把界面元素闪出来
   const readOnly = sharedReadonly || sharedLoading
-  // 写作模式与分享页共用「无侧栏」布局：整页只剩正文
+  // 写作模式与分享页同样隐藏侧栏，区别是写作模式仍保留右侧大纲
   const chromeHidden = readOnly || writingMode
   const writingHint = shortcutHint(shortcutKeys, 'toggleWriting')
 
   return (
     <div
       className="typora-app"
-      data-sidebar={chromeHidden ? 'hidden' : sidebarCollapsed ? 'collapsed' : 'open'}
+      data-sidebar={chromeHidden ? 'hidden' : 'open'}
       data-writing={writingMode && !readOnly}
       data-readonly={readOnly}
     >
@@ -1279,15 +1272,13 @@ export function RichTextEditor({
           editor={editor}
           title={title}
           onTitleChange={setTitle}
-          collapsed={sidebarCollapsed}
-          onToggleCollapsed={toggleSidebar}
+          onEnterWriting={toggleWritingMode}
           sourceOpen={sourceOpen}
           onToggleSource={() => setSourceOpen((value) => !value)}
           focusMode={focusMode}
           typewriterMode={typewriterMode}
           laserActive={laserActive}
           onToggleFocus={() => setFocusMode((value) => !value)}
-          onToggleWriting={toggleWritingMode}
           onToggleTypewriter={() => setTypewriterMode((value) => !value)}
           onToggleLaser={() => setLaserActive((value) => !value)}
           onOpenTheme={() => setThemeOpen(true)}
@@ -1326,6 +1317,7 @@ export function RichTextEditor({
             <EditorContent editor={editor} />
             <CodeBlockLanguage editor={editor} readOnly={readOnly} />
             <TableToolbar editor={editor} hidden={laserActive} />
+            <TableCellMenu editor={editor} hidden={laserActive} />
             {!readOnly && !writingMode && (
               <DocResizer onResize={setDocWidth} onCommit={saveDocWidth} />
             )}
@@ -1336,7 +1328,7 @@ export function RichTextEditor({
       <OutlineRail
         editor={editor}
         onNavigate={navigateTo}
-        hidden={typingDemo || readOnly || writingMode}
+        hidden={typingDemo || readOnly}
       />
 
       {/* 写作模式里侧栏整块让出，留一个角落按钮当出口 */}

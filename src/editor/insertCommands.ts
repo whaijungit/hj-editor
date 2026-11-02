@@ -81,14 +81,20 @@ export function toggleHighlight(editor: Editor) {
   editor.chain().focus().setHighlight({ color: '#fef08a' }).run()
 }
 
-/** 表格顶掉当前行 */
-export function insertTable(editor: Editor) {
+/** 表格超过这个尺寸在屏幕上看不全，插入面板里也只给到这么大 */
+export const TABLE_SIZE_LIMIT = 10
+
+/** 表格顶掉当前行；行列数由插入面板的网格选择器给出 */
+export function insertTable(editor: Editor, rows = 3, cols = 3) {
   if (!editor.isEditable) return
-  if (replaceCurrentBlock(editor, createTableNode(editor.schema))) return
+  const safeRows = Math.min(Math.max(rows, 1), TABLE_SIZE_LIMIT)
+  const safeCols = Math.min(Math.max(cols, 1), TABLE_SIZE_LIMIT)
+  const node = createTableNode(editor.schema, safeRows, safeCols)
+  if (replaceCurrentBlock(editor, node)) return
   editor
     .chain()
     .focus()
-    .insertTable({ rows: 3, cols: 3, withHeaderRow: true })
+    .insertTable({ rows: safeRows, cols: safeCols, withHeaderRow: true })
     .run()
 }
 

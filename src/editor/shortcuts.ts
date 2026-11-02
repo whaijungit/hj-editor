@@ -24,7 +24,6 @@ export type ShortcutContext = {
   importFile: () => void
   toggleSource: () => void
   openHelp: () => void
-  toggleSidebar: () => void
   toggleWriting: () => void
   toggleLaser: () => void
 }
@@ -60,7 +59,6 @@ export type ShortcutId =
   | 'echarts'
   | 'math'
   | 'mathBlock'
-  | 'toggleSidebar'
   | 'toggleWriting'
   | 'toggleLaser'
 
@@ -73,7 +71,7 @@ export type ShortcutDef = {
   readonlySafe?: boolean
   /**
    * 在哪儿生效：editor 只在正文编辑器内响应，
-   * global 走窗口监听，激光笔、侧栏这类离开编辑器也要能用。
+   * global 走窗口监听，写作模式、激光笔这类离开编辑器也要能用。
    */
   scope?: 'editor' | 'global'
   run: (ctx: ShortcutContext) => void
@@ -286,16 +284,8 @@ export const SHORTCUTS: ShortcutDef[] = [
     run: (ctx) => insertMath(ctx.editor, 'block'),
   },
   {
-    id: 'toggleSidebar',
-    label: '收起 / 展开侧栏',
-    group: '视图',
-    defaultKey: 'mod+shift+h',
-    scope: 'global',
-    run: (ctx) => ctx.toggleSidebar(),
-  },
-  {
     id: 'toggleWriting',
-    label: '写作模式（隐藏侧栏）',
+    label: '写作模式（收起侧栏）',
     group: '视图',
     defaultKey: 'mod+shift+.',
     scope: 'global',

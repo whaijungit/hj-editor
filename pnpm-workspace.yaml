@@ -1,5 +1,9 @@
+# esbuild/sharp 需要跑安装脚本下载原生二进制；netlify-cli 的 postinstall 只在用它的 CLI 时有用，
+# unix-dgram 是 Linux 专用模块，Windows 上不构建。
 allowBuilds:
-  esbuild: set this to true or false
-  netlify-cli: set this to true or false
-  sharp: set this to true or false
-  unix-dgram: set this to true or false
+  esbuild: true
+  sharp: true
+  netlify-cli: false
+  unix-dgram: false
+# 不用 junction，直接把依赖展开到 node_modules，绕开桌面路径上的重解析点问题
+nodeLinker: hoisted

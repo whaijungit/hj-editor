@@ -6,6 +6,7 @@ import { COLLAPSE_MIN_LINES, isCodeCollapsed, toggleCodeCollapse } from './codeC
 import {
   CODE_LANGUAGES,
   codeLanguageLabel,
+  isDiagramLanguage,
   resolveCodeLanguage,
 } from './codeLanguages'
 
@@ -198,8 +199,10 @@ export function CodeBlockLanguage({
         data-open={open}
         style={{ top: badgeTop, left: rect.right - BADGE_OFFSET }}
       >
-        {/* 短代码块不出现折叠按钮；已折叠时始终给一个展开入口 */}
-        {(info.collapsed || info.lines >= COLLAPSE_MIN_LINES) && (
+        {/* 短代码块不出现折叠按钮；已折叠时始终给一个展开入口。
+            图表块在正文里是「源码 + 图」两栏，折叠会把两栏挤乱，不给入口 */}
+        {!isDiagramLanguage(info.language) &&
+          (info.collapsed || info.lines >= COLLAPSE_MIN_LINES) && (
           <button
             type="button"
             className="code-block-fold"

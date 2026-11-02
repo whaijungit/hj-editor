@@ -45,7 +45,12 @@ import {
   Undo2,
   Upload,
 } from 'lucide-react'
-import { insertCodeBlock, insertRule, insertTable } from './insertCommands'
+import {
+  insertCodeBlock,
+  insertRule,
+  insertTable,
+  TABLE_SIZE_LIMIT,
+} from './insertCommands'
 
 const TEXT_COLORS = [
   '#1f2430',
@@ -478,6 +483,54 @@ function ImagePanel({ editor, close }: { editor: Editor; close: () => void }) {
   )
 }
 
+const DEFAULT_TABLE_SIZE = 3
+
+/**
+ * 表格尺寸选择器：鼠标划过多少格就预览多少行多少列，点一下按这个尺寸插入。
+ * 比原来固定的「插入 3 × 3 表格」多给一步选择，常用尺寸一次点到位。
+ */
+function TableSizePicker({ editor, close }: { editor: Editor; close: () => void }) {
+  const [hover, setHover] = useState({
+    rows: DEFAULT_TABLE_SIZE,
+    cols: DEFAULT_TABLE_SIZE,
+  })
+
+  return (
+    <div className="tb-size">
+      <div
+        className="tb-size__grid"
+        onMouseLeave={() =>
+          setHover({ rows: DEFAULT_TABLE_SIZE, cols: DEFAULT_TABLE_SIZE })
+        }
+      >
+        {Array.from({ length: TABLE_SIZE_LIMIT }, (_, row) => (
+          <div className="tb-size__row" key={row}>
+            {Array.from({ length: TABLE_SIZE_LIMIT }, (_, col) => (
+              <button
+                key={col}
+                type="button"
+                className="tb-size__cell"
+                data-active={row < hover.rows && col < hover.cols}
+                aria-label={`插入 ${row + 1} 行 ${col + 1} 列表格`}
+                title={`${row + 1} 行 × ${col + 1} 列`}
+                onMouseEnter={() => setHover({ rows: row + 1, cols: col + 1 })}
+                onFocus={() => setHover({ rows: row + 1, cols: col + 1 })}
+                onClick={() => {
+                  insertTable(editor, row + 1, col + 1)
+                  close()
+                }}
+              />
+            ))}
+          </div>
+        ))}
+      </div>
+      <div className="tb-size__hint">
+        {hover.rows} 行 × {hover.cols} 列
+      </div>
+    </div>
+  )
+}
+
 function TablePanel({ editor, close }: { editor: Editor; close: () => void }) {
   const inTable = editor.isActive('table')
 
@@ -488,14 +541,8 @@ function TablePanel({ editor, close }: { editor: Editor; close: () => void }) {
 
   return (
     <>
-      <button
-        type="button"
-        className="tb-item"
-        onClick={() => run(() => insertTable(editor))}
-      >
-        <Table2 size={14} />
-        插入 3 × 3 表格
-      </button>
+      <div className="tb-panel-title">插入表格</div>
+      <TableSizePicker editor={editor} close={close} />
       <div className="tb-divider" />
       <button
         type="button"

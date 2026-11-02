@@ -17,13 +17,12 @@ const ECHARTS_LANGUAGES = new Set(['echarts', 'echart', 'chart'])
 
 type ThemeName = 'light' | 'dark'
 
-type ChartSource = { option: Record<string, unknown>; height: number }
+type ChartSource = { option: Record<string, unknown> }
 /** echartsSetup 的默认导出就是 `import * as echarts from 'echarts/core'` 的命名空间 */
 type EchartsNamespace = typeof import('./echartsSetup').default
 
-const DEFAULT_HEIGHT = 360
-const MIN_HEIGHT = 160
-const MAX_HEIGHT = 900
+/** 图表画布高度固定 600px，与左侧源码栏对齐，不再读代码里的 `// height` 指令 */
+const CHART_HEIGHT = 600
 const CACHE_LIMIT = 60
 /** 编辑图表代码后等停手再重画，避免每次按键都重播动画 */
 const REBUILD_DELAY = 320
@@ -127,13 +126,6 @@ function evaluateJs(code: string, echarts: EchartsNamespace): OptionResult {
 /** 解析结果缓存：键是代码块内容，option 里的函数也一起缓存，重建图表不会重跑脚本 */
 const optionCache = new Map<string, OptionResult>()
 
-/** 只读首行 `// height: 420`，不执行代码，所以建 widget 时就能定高 */
-function readHeight(code: string): number {
-  const match = code.match(/^\s*\/\/\s*height\s*[:=]\s*(\d{2,4})\s*$/im)
-  if (!match) return DEFAULT_HEIGHT
-  return Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, Number(match[1])))
-}
-
 /**
  * 解析代码块内容，支持两种写法：
  * - JSON：允许 `//` 整行注释、`/* *\/` 块注释、尾逗号，只走 JSON.parse，不执行代码
@@ -174,14 +166,12 @@ function buildOption(code: string, echarts: EchartsNamespace): OptionResult {
 
 /**
  * echarts 是动态 import 的，JS 写法又要用到它的命名空间，所以 option 等到这里才解析。
- * 高度是同步读的，建 widget 时就能占好位置，解析完成不会让布局跳动。
+ * 图表高度由 CSS 固定，建 widget 时就已经占好位置，解析完成不会让布局跳动。
  */
 async function loadSource(code: string): Promise<ChartSource | { error: string }> {
-  const height = readHeight(code)
   try {
     const echarts = await loadEcharts()
-    const result = buildOption(code, echarts)
-    return 'error' in result ? result : { option: result.option, height }
+    return buildOption(code, echarts)
   } catch (error) {
     return { error: formatError(error) }
   }
@@ -297,7 +287,6 @@ function buildFigure(
 
   const mount = document.createElement('div')
   mount.className = 'echarts-mount'
-  mount.style.height = `${readHeight(code)}px`
   figure.appendChild(mount)
   makeHint(figure, '图表渲染中…')
 
@@ -470,7 +459,7 @@ export async function renderEchartsSvg(
       renderer: 'svg',
       ssr: true,
       width,
-      height: source.height,
+      height: CHART_HEIGHT,
     })
     try {
       chart.setOption(source.option as never)

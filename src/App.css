@@ -1,15 +1,11 @@
 .typora-app {
-  /* 侧边栏宽度：展开 / 收起后只留一列图标 / 分享页整块让出 */
+  /* 侧边栏宽度：展开 / 写作模式与分享页整块让出 */
   --sidebar-w: 248px;
   min-height: 100vh;
   padding-left: var(--sidebar-w);
   background: var(--paper);
   color: var(--text);
   transition: padding-left 0.18s ease;
-}
-
-.typora-app[data-sidebar='collapsed'] {
-  --sidebar-w: 56px;
 }
 
 .typora-app[data-sidebar='hidden'] {
@@ -39,11 +35,6 @@
   height: 46px;
   padding: 0 8px 0 7px;
   border-bottom: 1px solid var(--border);
-}
-
-.sidebar[data-collapsed='true'] .sidebar-head {
-  justify-content: center;
-  padding: 0;
 }
 
 .sidebar-toggle {
@@ -83,11 +74,7 @@
   overscroll-behavior: contain;
 }
 
-/* 侧栏只剩插入语法，按「文本 / 段落 / 插入」分段平铺 */
-.sidebar[data-collapsed='true'] .sidebar-nav {
-  display: none;
-}
-
+/* 插入语法按「文本 / 段落 / 插入」分段平铺 */
 .sidebar-group-label {
   margin: 10px 0 2px;
   padding: 0 8px;
@@ -241,7 +228,7 @@
   font-size: 11px;
 }
 
-/* 图标条：一行放不下就换行，折叠后变成一列 */
+/* 图标条：一行放不下就换行 */
 .sidebar-foot {
   display: flex;
   flex-wrap: wrap;
@@ -251,11 +238,6 @@
   margin-top: auto;
   padding: 6px 4px;
   border-top: 1px solid var(--border);
-}
-
-.sidebar[data-collapsed='true'] .sidebar-foot {
-  flex-direction: column;
-  flex-wrap: nowrap;
 }
 
 .icon-btn {
@@ -553,6 +535,8 @@ body[data-resizing='true'] {
   padding: var(--page-pad-top) 12px var(--page-pad-bottom);
   --page-pad-top: 56px;
   --page-pad-bottom: 150px;
+  /* 图表块的「两栏 / 上下」跟随正文宽度切换，而不是窗口宽度 */
+  container-type: inline-size;
 }
 
 /* 正文宽度拖拽手柄：一条细竖线改成随滚动跟随的小手柄 */

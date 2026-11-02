@@ -1,0 +1,81 @@
+- generic [active] [ref=e1]:
+  - generic:
+    - generic: 北京
+    - generic: 天津
+    - generic: 河北
+    - generic: 石家庄
+    - generic: 山西
+    - generic: 太原
+    - generic: 内蒙古
+    - generic: 呼和浩特
+    - generic: 辽宁
+    - generic: 沈阳
+    - generic: 吉林
+    - generic: 长春
+    - generic: 黑龙江
+    - generic: 哈尔滨
+    - generic: 上海
+    - generic: 江苏
+    - generic: 南京
+    - generic: 浙江
+    - generic: 杭州
+    - generic: 安徽
+    - generic: 合肥
+    - generic: 福建
+    - generic: 福州
+    - generic: 江西
+    - generic: 南昌
+    - generic: 山东
+    - generic: 济南
+    - generic: 河南
+    - generic: 郑州
+    - generic: 湖北
+    - generic: 武汉
+    - generic: 湖南
+    - generic: 长沙
+    - generic: 广东
+    - generic: 广州
+    - generic: 广西
+    - generic: 南宁
+    - generic: 海南
+    - generic: 海口
+    - generic: 重庆
+    - generic: 四川
+    - generic: 成都
+    - generic: 贵州
+    - generic: 贵阳
+    - generic: 云南
+    - generic: 昆明
+    - generic: 西藏
+    - generic: 拉萨
+    - generic: 陕西
+    - generic: 西安
+    - generic: 甘肃
+    - generic: 兰州
+    - generic: 青海
+    - generic: 西宁
+    - generic: 宁夏
+    - generic: 银川
+    - generic: 新疆
+    - generic: 乌鲁木齐
+    - generic: 台湾
+    - generic: 台北
+    - generic: 香港
+    - generic: 澳门
+    - generic: 珠穆朗玛峰 8848m
+    - generic: 乔戈里峰 8611m
+  - generic [ref=e4]:
+    - heading "中国三维地形" [level=1] [ref=e5]
+    - paragraph [ref=e6]: 真实高程数据 · AWS Terrain Tiles (Terrarium)
+  - generic [ref=e7]:
+    - generic [ref=e8]:
+      - generic [ref=e9]: 高度夸张
+      - status [ref=e10]: 1.0×
+    - slider "高度夸张" [ref=e11]: "1"
+    - generic [ref=e12]:
+      - generic [ref=e13]: 等高线
+      - generic [ref=e14] [cursor=pointer]
+    - generic [ref=e16]:
+      - generic [ref=e17]: 省市标注
+      - generic [ref=e18] [cursor=pointer]
+  - generic: 正在加载地形数据

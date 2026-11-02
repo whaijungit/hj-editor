@@ -10,6 +10,7 @@ import type { EditorState } from '@tiptap/pm/state'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import type { EditorView } from '@tiptap/pm/view'
+import { isDiagramLanguage } from './codeLanguages'
 
 /** 不到这么多行就不给折叠按钮：折三行没有意义 */
 export const COLLAPSE_MIN_LINES = 8
@@ -75,6 +76,8 @@ function buildDecorations(doc: ProseMirrorNode, collapsed: Set<number>): Decorat
   for (const pos of collapsed) {
     const node = doc.nodeAt(pos)
     if (!node || node.type.name !== 'codeBlock') continue
+    // 图表块的源码是「两栏」里的一栏，折叠按钮会插进两栏之间，干脆不折叠
+    if (isDiagramLanguage(node.attrs.language as string | null)) continue
 
     const end = pos + node.nodeSize
     decorations.push(Decoration.node(pos, end, { class: 'is-code-collapsed' }))

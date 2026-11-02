@@ -12,8 +12,6 @@ import {
   Loader2,
   Palette,
   PanelLeftClose,
-  PanelLeftOpen,
-  PenLine,
   Save,
   TextCursorInput,
   Zap,
@@ -29,16 +27,14 @@ export type SidebarProps = {
   editor: Editor
   title: string
   onTitleChange: (title: string) => void
-  /** 收起后只留一列图标，所有屏幕尺寸共用同一套布局 */
-  collapsed: boolean
-  onToggleCollapsed: () => void
+  /** 收起侧栏＝进入写作模式：整块侧栏让出，不再留一列图标 */
+  onEnterWriting: () => void
   sourceOpen: boolean
   onToggleSource: () => void
   focusMode: boolean
   typewriterMode: boolean
   laserActive: boolean
   onToggleFocus: () => void
-  onToggleWriting: () => void
   onToggleTypewriter: () => void
   onToggleLaser: () => void
   onOpenTheme: () => void
@@ -77,15 +73,13 @@ export function Sidebar({
   editor,
   title,
   onTitleChange,
-  collapsed,
-  onToggleCollapsed,
+  onEnterWriting,
   sourceOpen,
   onToggleSource,
   focusMode,
   typewriterMode,
   laserActive,
   onToggleFocus,
-  onToggleWriting,
   onToggleTypewriter,
   onToggleLaser,
   onOpenTheme,
@@ -118,49 +112,40 @@ export function Sidebar({
   })
 
   return (
-    <aside className="sidebar" data-collapsed={collapsed} aria-label="文档侧栏">
+    <aside className="sidebar" aria-label="文档侧栏">
       <div className="sidebar-head">
         <button
           type="button"
           className="sidebar-toggle"
-          aria-label={collapsed ? '展开侧边栏' : '收起侧边栏'}
-          aria-expanded={!collapsed}
-          title={`${collapsed ? '展开' : '收起'}侧边栏${keyHint('toggleSidebar')}`}
-          onClick={onToggleCollapsed}
+          aria-label="收起侧边栏，进入写作模式"
+          title={`收起侧边栏，进入写作模式${keyHint('toggleWriting')}`}
+          onClick={onEnterWriting}
         >
-          {collapsed ? (
-            <PanelLeftOpen size={17} strokeWidth={1.7} aria-hidden="true" />
-          ) : (
-            <PanelLeftClose size={17} strokeWidth={1.7} aria-hidden="true" />
-          )}
+          <PanelLeftClose size={17} strokeWidth={1.7} aria-hidden="true" />
         </button>
-        {!collapsed && (
-          <span className="save-hint">
-            {readOnly
-              ? '只读分享'
-              : cloudSavedAt
-                ? `云端已存 ${formatClock(cloudSavedAt)}`
-                : '自动保存'}
-          </span>
-        )}
+        <span className="save-hint">
+          {readOnly
+            ? '只读分享'
+            : cloudSavedAt
+              ? `云端已存 ${formatClock(cloudSavedAt)}`
+              : '自动保存'}
+        </span>
       </div>
 
-      {!collapsed && (
-        <div className="sidebar-title">
-          <input
-            className="doc-title"
-            value={title}
-            readOnly={readOnly}
-            aria-label="文档标题"
-            title={readOnly ? '分享文稿，标题不可修改' : '点击修改文档标题'}
-            spellCheck={false}
-            onChange={(event) => onTitleChange(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') event.currentTarget.blur()
-            }}
-          />
-        </div>
-      )}
+      <div className="sidebar-title">
+        <input
+          className="doc-title"
+          value={title}
+          readOnly={readOnly}
+          aria-label="文档标题"
+          title={readOnly ? '分享文稿，标题不可修改' : '点击修改文档标题'}
+          spellCheck={false}
+          onChange={(event) => onTitleChange(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') event.currentTarget.blur()
+          }}
+        />
+      </div>
 
       <nav className="sidebar-nav" aria-label="Markdown 插入语法">
         {palette.map((entry, index) => (
@@ -259,15 +244,6 @@ export function Sidebar({
           onClick={onToggleSource}
         >
           <Code2 size={17} />
-        </button>
-        <button
-          type="button"
-          className="icon-btn"
-          aria-label="写作模式"
-          title={`写作模式：隐藏侧栏与大纲${keyHint('toggleWriting')}`}
-          onClick={onToggleWriting}
-        >
-          <PenLine size={17} />
         </button>
         <button
           type="button"

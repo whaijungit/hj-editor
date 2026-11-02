@@ -144,6 +144,57 @@
   padding: 10px;
 }
 
+.tb-panel-title {
+  padding: 4px 6px 2px;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+/* 插入表格的尺寸网格：划到第 N 行第 M 列就预览 N × M */
+.tb-size {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 2px 6px 4px;
+}
+
+.tb-size__grid {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tb-size__row {
+  display: flex;
+  gap: 2px;
+}
+
+.tb-size__cell {
+  width: 15px;
+  height: 15px;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 3px;
+  background: var(--surface-muted);
+  cursor: pointer;
+  transition:
+    background 0.1s ease,
+    border-color 0.1s ease;
+}
+
+.tb-size__cell[data-active='true'] {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+.tb-size__hint {
+  color: var(--text-tertiary);
+  font-size: 12px;
+  text-align: center;
+}
+
 @keyframes panel-in {
   from {
     opacity: 0;
@@ -568,17 +619,19 @@
   position: relative;
   display: flex;
   justify-content: center;
+  align-items: center;
   margin: -0.3em 0 1.4em;
   padding: 18px 16px;
   border: 1px solid var(--border);
   border-radius: 12px;
   background: var(--surface);
-  overflow-x: auto;
+  overflow: auto;
   user-select: none;
 }
 
 .mermaid-figure svg {
   max-width: 100%;
+  max-height: 100%;
   height: auto;
 }
 
@@ -604,6 +657,8 @@
 /* ```echarts 代码块下方渲染出的数据图表 */
 .echarts-figure {
   position: relative;
+  display: flex;
+  flex-direction: column;
   margin: -0.3em 0 1.4em;
   padding: 10px 12px;
   border: 1px solid var(--border);
@@ -613,8 +668,9 @@
 }
 
 .echarts-mount {
+  flex: 1;
   width: 100%;
-  min-height: 160px;
+  min-height: 0;
 }
 
 .echarts-hint {
@@ -631,6 +687,59 @@
 
 .echarts-figure[data-state='error'] .echarts-hint {
   color: #d14343;
+}
+
+/* 图表块的正文排版：源码在左、渲染图在右。
+   pre 和渲染图是相邻兄弟，用 :has() 认出「紧跟图表的 pre」再各分一栏；
+   源码收起时 pre 不占位，图自动回到整行。 */
+.writer-page .tiptap-content > pre:has(+ .mermaid-figure),
+.writer-page .tiptap-content > pre:has(+ .echarts-figure) {
+  float: left;
+  width: calc(50% - 12px);
+  /* 源码栏与图表栏统一固定 600px：代码再长也只在框内滚动，两栏始终齐平 */
+  height: 600px;
+  margin: 1.1em 24px 0.2em 0;
+  overflow: auto;
+}
+
+.writer-page .tiptap-content > .mermaid-figure,
+.writer-page .tiptap-content > .echarts-figure {
+  float: right;
+  width: calc(50% - 12px);
+  /* 图表栏同样固定 600px，与左侧源码栏对齐 */
+  height: 600px;
+  margin: 1.1em 0;
+}
+
+/* 只显示图的时候（源码收起）不能浮着，否则下面的正文会绕进图里 */
+.writer-page .tiptap-content > pre.is-code-source-hidden + .mermaid-figure,
+.writer-page .tiptap-content > pre.is-code-source-hidden + .echarts-figure {
+  float: none;
+  width: auto;
+  margin: 0.85em 0 1.4em;
+}
+
+/* 两栏后面的内容清掉浮动，段落从两栏下面重新开始 */
+.writer-page .tiptap-content > .mermaid-figure + *,
+.writer-page .tiptap-content > .echarts-figure + * {
+  clear: both;
+}
+
+/* 正文宽度不够并排（窗口或正文栏被拖窄）时回到上下排列：源码在上、图在下 */
+@container (max-width: 760px) {
+  .writer-page .tiptap-content > pre:has(+ .mermaid-figure),
+  .writer-page .tiptap-content > pre:has(+ .echarts-figure) {
+    float: none;
+    width: auto;
+    margin: 1.1em 0 0.2em;
+  }
+
+  .writer-page .tiptap-content > .mermaid-figure,
+  .writer-page .tiptap-content > .echarts-figure {
+    float: none;
+    width: auto;
+    margin: 0.85em 0 1.4em;
+  }
 }
 
 /* 收起源码的图表块（echarts / mermaid）：正文里只留图表，
@@ -1127,6 +1236,22 @@
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 1px;
+}
+
+/* 单元格右键菜单 */
+.cell-menu {
+  position: fixed;
+  z-index: 120;
+  padding: 6px;
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 18px 40px -18px rgba(15, 18, 35, 0.4);
+  font-size: 13px;
+  scrollbar-width: thin;
+  animation: panel-in 0.12s ease-out;
+  transform-origin: top left;
 }
 
 .tt-item {

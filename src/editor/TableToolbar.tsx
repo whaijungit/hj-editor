@@ -81,11 +81,19 @@ export function TableToolbar({
     }
     const rect = table.getBoundingClientRect()
     const barWidth = 132
-    const left = Math.min(
-      Math.max(rect.left, 8),
-      Math.max(window.innerWidth - barWidth - 8, 8),
-    )
-    const top = rect.top > 64 ? rect.top - 34 : 64
+    const barHeight = 30
+    const gutter = 10
+
+    // 表格右侧留白够宽就贴在右边，避免压住表格正上方的标题和正文
+    const beside = window.innerWidth - rect.right - gutter >= barWidth + 20
+    const left = beside
+      ? rect.right + gutter
+      : Math.min(Math.max(rect.left, 8), Math.max(window.innerWidth - barWidth - 8, 8))
+    const top = beside
+      ? Math.min(Math.max(rect.top, 64), Math.max(window.innerHeight - barHeight - 8, 8))
+      : rect.top > 64
+        ? rect.top - 34
+        : 64
     setAnchor((current) => {
       if (current && Math.abs(current.left - left) < 0.5 && Math.abs(current.top - top) < 0.5) {
         return current

@@ -2,14 +2,13 @@
 
 五个常用图表：饼图、热力图、折线图、箱线图、柱状图。
 
-每个代码块第一行的 `// height: 380` 用来指定图表高度（160–900，不写默认 360）；块内可以直接写 ECharts 的 option，JSON 或一段返回 option 的 JS 都行。
+每个代码块的源码栏与图表栏都固定 600px 高；块内可以直接写 ECharts 的 option，JSON 或一段返回 option 的 JS 都行。
 
 ## 1. 饼图 · 流量来源
 
 环形饼图，悬停时该扇区放大并带阴影，其余扇区自动淡出；图例可点击筛选，tooltip 显示数值与占比。
 
 ```echarts
-// height: 380
 const data = [
   { name: '自然搜索', value: 1048 },
   { name: '直接访问', value: 735 },
@@ -71,7 +70,6 @@ const option = {
 24 小时 × 7 天的连续色阶，横向 visualMap 可拖动筛选区间；悬停格子有阴影高亮，tooltip 给出精确数值。
 
 ```echarts
-// height: 400
 const days = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
 const hours = Array.from({ length: 24 }, (_, i) => `${i} 时`)
 
@@ -151,7 +149,6 @@ const option = {
 双折线 + 渐变面积，十字准星 tooltip 同时展示两个系列；图例可切换，均值基准线随数据自动计算。
 
 ```echarts
-// height: 380
 const months = ['1 月', '2 月', '3 月', '4 月', '5 月', '6 月', '7 月', '8 月', '9 月', '10 月', '11 月', '12 月']
 const visits = [820, 932, 901, 1290, 1330, 1120, 1450, 1320, 1180, 1520, 1680, 1490]
 const orders = [320, 402, 361, 534, 590, 480, 660, 610, 520, 700, 780, 690]
@@ -250,7 +247,6 @@ const option = {
 箱体用渐变填充，悬停高亮并带阴影；tooltip 展开最大值、上四分位、中位数、下四分位、最小值。
 
 ```echarts
-// height: 380
 const classes = ['一班', '二班', '三班', '四班', '五班']
 // 每组为 [最小值, 下四分位, 中位数, 上四分位, 最大值]
 const boxData = [
@@ -328,7 +324,6 @@ const option = {
 渐变圆角柱 + 顶部数值标签，tooltip 走阴影指示；悬停某个系列时另一系列自动淡出，同比对比更直观。
 
 ```echarts
-// height: 380
 const quarters = ['Q1', 'Q2', 'Q3', 'Q4']
 const thisYear = [4820, 5680, 5210, 6940]
 const lastYear = [3960, 4380, 4520, 5180]

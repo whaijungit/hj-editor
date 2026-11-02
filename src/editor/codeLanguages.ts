@@ -232,6 +232,18 @@ export function resolveCodeLanguage(id: string | null | undefined): string | nul
   return LANGUAGE_IDS.has(alias) ? alias : null
 }
 
+/**
+ * 这段代码块是不是交给图表渲染器（mermaid / echarts）的。
+ * 别名（mmd / chart / echart）也算，判断时统一走 resolveCodeLanguage。
+ */
+export function isDiagramLanguage(id: string | null | undefined): boolean {
+  if (!id) return false
+  const normalized = id.trim().toLowerCase()
+  if (normalized === 'mmd') return true
+  const resolved = resolveCodeLanguage(normalized)
+  return resolved === 'mermaid' || resolved === 'echarts'
+}
+
 /** 编辑器里显示的语言名，未知语言直接显示原始标识 */
 export function codeLanguageLabel(id: string | null | undefined): string {
   if (!id) return LABELS.get(DEFAULT_CODE_LANGUAGE) ?? '纯文本'

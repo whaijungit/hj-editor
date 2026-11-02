@@ -74,23 +74,21 @@ export function clearDraft() {
 }
 
 export type ChromeVisibility = {
-  /** 侧边栏是否展开；false 时只留一列图标 */
-  sidebar: boolean
-  /** 写作模式：侧栏和大纲整块让出，页面上只剩正文 */
+  /** 写作模式：收起侧栏，页面上只剩正文与右侧大纲 */
   writing: boolean
 }
 
 /** 默认展开侧边栏，菜单是唯一入口，先让用户看得见 */
-const DEFAULT_CHROME: ChromeVisibility = { sidebar: true, writing: false }
+const DEFAULT_CHROME: ChromeVisibility = { writing: false }
 
 export function loadChromeVisibility(): ChromeVisibility {
   try {
     const raw = window.localStorage.getItem(CHROME_KEY)
     if (!raw) return DEFAULT_CHROME
-    const parsed = JSON.parse(raw) as Partial<ChromeVisibility>
+    // 旧版把「只留一列图标」存成 sidebar:false；现在收起即写作模式，一并迁移过来
+    const parsed = JSON.parse(raw) as { writing?: boolean; sidebar?: boolean }
     return {
-      sidebar: parsed.sidebar !== false,
-      writing: parsed.writing === true,
+      writing: parsed.writing === true || parsed.sidebar === false,
     }
   } catch {
     return DEFAULT_CHROME

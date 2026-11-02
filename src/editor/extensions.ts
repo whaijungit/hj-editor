@@ -12,7 +12,7 @@ import { TaskList } from '@tiptap/extension-task-list'
 import { TextAlign } from '@tiptap/extension-text-align'
 import { TextStyle } from '@tiptap/extension-text-style'
 import { StarterKit } from '@tiptap/starter-kit'
-import { DEFAULT_CODE_LANGUAGE, lowlight } from './codeLanguages'
+import { DEFAULT_CODE_LANGUAGE, isDiagramLanguage, lowlight } from './codeLanguages'
 import { CodeCollapse } from './codeCollapse'
 import { EchartsDiagram } from './echarts'
 import { MarkdownInsertShortcuts } from './insertCommands'
@@ -21,19 +21,25 @@ import { MermaidDiagram } from './mermaid'
 import { TypingPop, TypingReveal } from './typingReveal'
 
 /**
- * 代码块多一个 `hideSource` 属性：给 ```echarts 块用——把源码收起来只留图表。
+ * 代码块多一个 `hideSource` 属性：给图表块（mermaid / echarts）用——把源码收起来只留图表。
  * 放节点属性而不是插件内存状态，是因为草稿按 HTML 快照存，属性会一起回来；
  * Markdown 导出只写围栏语言，源码不会因为「隐藏」而丢。
+ *
+ * 默认就是收起：图表块在正文里直接是「图」，点图右上角的「显示代码」才展开源码。
  */
 const CodeBlock = CodeBlockLowlight.extend({
   addAttributes() {
     return {
       ...this.parent?.(),
       hideSource: {
-        default: false,
-        parseHTML: (element) => element.getAttribute('data-hide-source') === 'true',
-        renderHTML: (attributes) =>
-          attributes.hideSource ? { 'data-hide-source': 'true' } : {},
+        default: true,
+        // 老文档里没有这个属性（或写的是 false）就按显式展开处理，别把旧代码吞掉
+        parseHTML: (element) => element.getAttribute('data-hide-source') !== 'false',
+        renderHTML: (attributes) => {
+          // 只有图表块输出这个属性，普通代码块不进 HTML
+          if (!isDiagramLanguage(attributes.language as string | null)) return {}
+          return { 'data-hide-source': attributes.hideSource === false ? 'false' : 'true' }
+        },
       },
     }
   },
